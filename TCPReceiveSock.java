@@ -46,11 +46,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     int MSS = 128;
     Date timeService = new Date();
 
-    enum Verbose {
-        SILENT, REPORT, FULL
-    }
-
-    Verbose verboseState = Verbose.REPORT;
+    Verbose verboseState = Verbose.FULL;
     boolean DELAY = false;
 
     // TCP socket states
@@ -117,13 +113,13 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     // MPTCP (move the UDP socket into this)
     private DatagramSocket UDPSocket;
-    private InetAddress address;
     SynchronousQueue<Message> dataQ;
 
-    public TCPReceiveSock(MPSock mpSock, InetAddress addr) {
+    public TCPReceiveSock(MPSock mpSock, InetAddress addr, int port) {
+        /// 
         this.mpSock = mpSock;
-        this.addr = addr; // here - to be hardcoded during creation of socket
-        this.port = this.mpSock.getPort();
+        this.addr = addr;
+        this.port = port;
         try {
             UDPSocket = new DatagramSocket(this.port, this.addr);
             UDPSocket.setSoTimeout(100);
@@ -152,7 +148,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             DatagramPacket p = new DatagramPacket(buf, buf.length);
             try {
                 this.UDPSocket.receive(p);
-            } catch (Exception e) {
+            } catch (SocketTimeoutException e) {
+                continue;
+            } catch (IOException e){
                 e.printStackTrace();
             }
 
@@ -163,6 +161,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
             // build CiD
             ConnID incomingTuple = new ConnID(incomingAddress, incomingPort, this.addr, this.port);
+            logOutput("receieve:" + incomingTuple.toString());
             this.handleReceive(incomingTuple, incomingPacket);
         }
     }
@@ -742,24 +741,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     }
 
-    public void logError(String output) {
-        this.log(output, System.err);
-    }
-
-    public void logOutput(String output) {
-        this.log(output, System.out);
-    }
-
-    private void log(String output, PrintStream stream) {
-        if (verboseState == Verbose.FULL) {
-
-            stream.println("Node " + this.addr + ": " + output);
-        } else if (verboseState == Verbose.REPORT) {
-            ;
-        } else {
-            ;
-        }
-    }
 
     public void logSendAck(boolean goodAck) {
         // System.out.print("ACKPRINT");
@@ -846,6 +827,28 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0, new byte[0]);
         sendSegment(cID.srcAddr, cID.destAddr, finTransport);
 
+    }
+
+
+
+
+    public void logError(String output) {
+        log(output, System.err);
+    }
+
+    public void logOutput(String output) {
+        log(output, System.out);
+    }
+
+    public void log(String output, PrintStream stream) {
+        System.out.println(this.verboseState);
+        if (this.verboseState == Verbose.FULL) {
+            stream.println("Node " + this.addr + ": " + output);
+        } else if (this.verboseState == Verbose.REPORT) {
+            ;
+        } else {
+            ;
+        }
     }
 
 }

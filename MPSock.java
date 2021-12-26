@@ -8,6 +8,8 @@ import java.net.NetworkInterface;
 import java.net.InterfaceAddress;
 import java.util.Enumeration;
 import java.util.concurrent.SynchronousQueue;
+import java.lang.NullPointerException;
+import java.io.PrintStream;
 
 
 /**
@@ -31,12 +33,10 @@ import java.util.concurrent.SynchronousQueue;
  * @version 1.0
  */
 
-public class MPSock {
+public class MPSock extends TCPSock{
     final int SENDER = 0;
     final int EVER = 1;
 
-    private InetAddress addr;
-    public int port;
     private State state;
     int timeout = 1000;
     final int BUFFERSIZE = 1000;
@@ -47,16 +47,14 @@ public class MPSock {
     List<SynchronousQueue<Message>> dataQList;
     SenderByteBuffer sendBuffer;
     ReceiverByteBuffer receiverBuffer;
+
+
+    // debug
+    Verbose verboseState;
     
 
     private byte[] buf;
 
-    enum State {
-        // protocol states
-        CLOSED, LISTEN, SYN_SENT, ESTABLISHED, SHUTDOWN, BUFFER_CLEAR, FIN_SENT, TIME_WAIT // close requested, FIN not
-                                                                                           // sent (due to unsent data
-        // in queue)
-    }
 
     HashMap<ConnID, TCPSock> estMap = new HashMap<ConnID, TCPSock>();
     HashMap<Integer, TCPSock> listenMap = new HashMap<Integer, TCPSock>();
@@ -66,6 +64,7 @@ public class MPSock {
         this.addr = addr; // fishnet version
         this.port = port;
         dataQList = new ArrayList<SynchronousQueue<Message>>();
+        verboseState = Verbose.FULL;
 
         // keep hashmap of port -> socket and track the state
     }
@@ -91,17 +90,21 @@ public class MPSock {
 
     // create a new listening TCPSock
     public int listen(int backlog) {
-        TCPReceiveSock listenSock = new TCPReceiveSock(this, this.getPort());
-        this.addListenSocket(listenSock);
+        TCPReceiveSock listenSock = new TCPReceiveSock(this, this.addr, this.port);
+        listenSock.listen(backlog);
         this.state = State.LISTEN;
-        // this.backlogMax = backlog;
-        // this.backlogSize = 0;
+        Runnable listenSockRunnable = (Runnable) listenSock;
+        Thread listenSockThread = new Thread(listenSockRunnable);
+        listenSockThread.start();
         return 0;
     }
 
-    public MPSock accept() {
+    public MPSock accept() throws NullPointerException{
         if (this.state == State.LISTEN) {
             TCPReceiveSock listenSock = (TCPReceiveSock) listenMap.get(this.port);
+            if (listenSock == null){
+                throw new NullPointerException("no listensock found");
+            }
             if (listenSock.accept() == null) {
                 return null;
             }
@@ -183,6 +186,10 @@ public class MPSock {
         return this.port;
     }
 
+    public State getState(){
+        return state;
+    }
+
     public boolean checkPort(int portQuery) {
         return (listenMap.containsKey(portQuery));
     }
@@ -223,6 +230,9 @@ public class MPSock {
         // listenMap for a given listen socket
     }
 
+    public void removeEstSocket(ConnID cID){
+        ;
+    }
     /*
      * Begin socket API
      */
@@ -248,7 +258,7 @@ public class MPSock {
      */
     public int write(byte[] buf, int pos, int len) {
         // logOutput("===== Before write =====");
-        // buffer.getState();
+    // buffer.getState();
         int bytesWrite = sendBuffer.write(buf, pos, len);
         if (bytesWrite == -1) {
             return -1;
@@ -285,5 +295,31 @@ public class MPSock {
 
         return mappingSize;
     }
+
+
+
+    public void logError(String output) {
+        log(output, System.err);
+    }
+
+    public void logOutput(String output) {
+        log(output, System.out);
+    }
+
+    public void log(String output, PrintStream stream) {
+        if (this.verboseState == Verbose.FULL) {
+            stream.println(this.addr + ": " + output);
+        } else if (this.verboseState == Verbose.REPORT) {
+            ;
+        } else {
+            ;
+        }
+    }
+
+    // method to print detials about a socket
+    public String toString(){
+        return this.addr.toString() + ":" + Integer.toString(this.port);
+    }
+
 
 }

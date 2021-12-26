@@ -48,10 +48,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
     int MSS = 128;
     Date timeService = new Date();
 
-    enum Verbose {
-        SILENT, REPORT, FULL
-    }
-
     Verbose verboseState = Verbose.REPORT;
     boolean DELAY = false;
 
@@ -787,25 +783,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     }
 
-    public void logError(String output) {
-        this.log(output, System.err);
-    }
-
-    public void logOutput(String output) {
-        this.log(output, System.out);
-    }
-
-    private void log(String output, PrintStream stream) {
-        if (verboseState == Verbose.FULL) {
-
-            stream.println("Node " + this.addr + ": " + output);
-        } else if (verboseState == Verbose.REPORT) {
-            ;
-        } else {
-            ;
-        }
-    }
-
     public void logSendAck(boolean goodAck) {
         // System.out.print("ACKPRINT");
         if (goodAck) {
@@ -942,6 +919,31 @@ public class TCPSendSock extends TCPSock implements Runnable {
         sendSegment(cID.srcAddr, cID.destAddr, finTransport);
 
     }
+
+
+
+    // logging
+
+
+    public void logError(String output) {
+        log(output, System.err);
+    }
+
+    public void logOutput(String output) {
+        log(output, System.out);
+    }
+
+    public void log(String output, PrintStream stream) {
+        System.out.println(this.verboseState);
+        if (this.verboseState == Verbose.FULL) {
+            stream.println("Node " + this.addr + ": " + output);
+        } else if (this.verboseState == Verbose.REPORT) {
+            ;
+        } else {
+            ;
+        }
+    }
+
 
 }
 
