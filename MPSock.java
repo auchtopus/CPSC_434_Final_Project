@@ -137,10 +137,10 @@ public class MPSock extends TCPSock{
         sendSock.setCID(cID);
 
         // send SYN with MP_CAPABLE
-        sendSynRT(sendSock);
-
+        sendSock.connect(destAddr, destPort);
         return 0;
     }
+
 
     public int sendSynRT(TCPSendSock sock) {
         // send SYN packet to establish connection
@@ -213,6 +213,7 @@ public class MPSock extends TCPSock{
     }
 
     public TCPReceiveSock createEstSocket(ConnID cID) {
+        logOutput("Calling createEstSocket" + ": " + cID.toString());
         BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
         BlockingQueue<Message> commandQ = new LinkedBlockingQueue<Message>();
         this.dataQList.add(dataQ);

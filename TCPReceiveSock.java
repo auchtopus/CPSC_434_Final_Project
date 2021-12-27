@@ -208,9 +208,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             MPTransport transportPacket = MPTransport.unpack(packet.getData());
             handleReceive(cID, payload);
         } catch (SocketTimeoutException e) {
-            String[] paramType = { "java.lang.Integer", "java.lang.Integer", "MPTransport" };
+            String[] paramType = { "java.net.InetAddress", "java.net.InetAddress", "MPTransport" };
             Object[] params = { srcAddr, destAddr, payload };
-            addTimer(timeout, "SendSegment", paramType, params);
+            addTimer(timeout, "sendSegment", paramType, params);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -447,7 +447,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     public void addTimer(long deltaT, String methodName, String[] paramType, Object[] params) {
         try {
-            this.mpSock.addTimer(deltaT, methodName, paramType, params);
+            JavaTimer timer = new JavaTimer(deltaT, this, methodName, paramType, params);
             // Method method = Callback.getMethod(methodName, this, paramType);
             // Callback cb = new Callback(method, this, params);
             // this.mpSock.manager.addTimer(addr, deltaT, cb);
@@ -455,7 +455,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             e.printStackTrace();
         }
     }
-
     /**
      * Initiate closure of a connection (graceful shutdown)
      */
@@ -861,7 +860,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     }
 
     public void log(String output, PrintStream stream) {
-        System.out.println(this.verboseState);
         if (this.verboseState == Verbose.FULL) {
             stream.println("Node " + this.addr + ": " + output);
         } else if (this.verboseState == Verbose.REPORT) {

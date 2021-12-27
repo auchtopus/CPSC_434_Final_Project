@@ -48,7 +48,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
     int MSS = 128;
     Date timeService = new Date();
 
-    Verbose verboseState = Verbose.REPORT;
+    Verbose verboseState = Verbose.FULL;
     boolean DELAY = false;
 
     // TCP socket states
@@ -169,9 +169,9 @@ public class TCPSendSock extends TCPSock implements Runnable {
             MPTransport transportPacket = MPTransport.unpack(packet.getData());
             handleReceive(cID, payload);
         } catch (SocketTimeoutException e) {
-            String[] paramType = { "java.lang.Integer", "java.lang.Integer", "MPTransport" };
+            String[] paramType = { "java.net.InetAddress", "java.net.InetAddress", "MPTransport" };
             Object[] params = { srcAddr, destAddr, payload };
-            addTimer(timeout, "SendSegment", paramType, params);
+            addTimer(timeout, "sendSegment", paramType, params);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -336,9 +336,9 @@ public class TCPSendSock extends TCPSock implements Runnable {
         this.cID = new ConnID(this.addr, this.port, destAddr, destPort);
         try {
             UDPSock = new DatagramSocket(this.port);
-            UDPSock.setSoTimeout(100);
+            UDPSock.setSoTimeout(20);
         } catch (Exception e) {
-
+            e.printStackTrace();
         }
         state = State.SYN_SENT;
         synSeq = randGen.nextInt(50) + 10;
@@ -353,7 +353,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     public void addTimer(long deltaT, String methodName, String[] paramType, Object[] params) {
         try {
-            this.mpSock.addTimer(deltaT, methodName, paramType, params);
+            JavaTimer timer = new JavaTimer(deltaT, this, methodName, paramType, params);
             // Method method = Callback.getMethod(methodName, this, paramType);
             // Callback cb = new Callback(method, this, params);
             // this.mpSock.manager.addTimer(addr, deltaT, cb);
@@ -934,7 +934,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
     public void log(String output, PrintStream stream) {
-        System.out.println(this.verboseState);
         if (this.verboseState == Verbose.FULL) {
             stream.println("Node " + this.addr + ": " + output);
         } else if (this.verboseState == Verbose.REPORT) {
