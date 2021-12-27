@@ -219,15 +219,8 @@ public class MPSock extends TCPSock{
     public TCPReceiveSock createEstSocket(ConnID cID) {
         // TODO: extend to multiple IP addresses
         // need to find the next available port
-        ConnID reversecID = cID.reverse();
-        if (estMap.containsKey(reversecID)){
-            return null;
-        } else { // this is a unique connection, and we need to log the original (reversed) connID, though storing a null pointer, so that we can disambiguate incoming SYNs
-            estMap.put(reversecID, null);
-
-        }
-        
         int lowestPort = this.port;
+
         DatagramSocket checkPort = null;
         while (true){
             try{
@@ -378,21 +371,21 @@ public class MPSock extends TCPSock{
      * @return int on success, the number of bytes written, which may be smaller
      *         than len; on failure, -1
      */
-    // public int read(byte[] buf, int pos, int len) {
-    //     // logOutput("===== Before write =====");
-    //     // buffer.getState();
-    //     // peek all the blocks in the dataQlist and compare with DSN expected
-    //     Iterator iterator = dataQList.iterator();
-    //     Integer expectedDseq = this.buffer.getWrite();
-    //     while(iterator.hasNext()) {
-    //         ;
-    //     }
-    //     int bytesWrite = buffer.write(buf, pos, len);
-    //     if (bytesWrite == -1) {
-    //         return -1;
-    //     }
-    //     readToQ(); 
-    //     // logOutput("===== After write  =====");
-    //     // buffer.getState();
-    //     return bytesWrite;
-    // }
+    public int read(byte[] buf, int pos, int len) {
+        // logOutput("===== Before write =====");
+        // buffer.getState();
+        // peek all the blocks in the dataQlist and compare with DSN expected
+        Iterator iterator = dataQList.iterator();
+        Integer expectedDseq = this.buffer.getWrite();
+        while(iterator.hasNext()) {
+            ;
+        }
+        int bytesWrite = buffer.write(buf, pos, len);
+        if (bytesWrite == -1) {
+            return -1;
+        }
+        readToQ(); 
+        // logOutput("===== After write  =====");
+        // buffer.getState();
+        return bytesWrite;
+    }
