@@ -287,3 +287,32 @@ public class MPSock {
     }
 
 }
+
+ /**
+     * Read to the application up to len bytes from the message queues. The write function then breaks data written into packets to send on each subflow.
+     * pos.
+     *
+     * @param buf byte[] the buffer to write from
+     * @param pos int starting position in buffer
+     * @param len int number of bytes to write
+     * @return int on success, the number of bytes written, which may be smaller
+     *         than len; on failure, -1
+     */
+    public int read(byte[] buf, int pos, int len) {
+        // logOutput("===== Before write =====");
+        // buffer.getState();
+        // peek all the blocks in the dataQlist and compare with DSN expected
+        Iterator iterator = dataQList.iterator();
+        Integer expectedDseq = this.buffer.getWrite();
+        while(iterator.hasNext()) {
+            ;
+        }
+        int bytesWrite = buffer.write(buf, pos, len);
+        if (bytesWrite == -1) {
+            return -1;
+        }
+        readToQ(); 
+        // logOutput("===== After write  =====");
+        // buffer.getState();
+        return bytesWrite;
+    }

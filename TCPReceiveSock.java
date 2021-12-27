@@ -162,7 +162,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             MPTransport incomingPacket = MPTransport.unpack(incomingPayload);
 
             // build CiD
-            ConnID incomingTuple = new ConnID(incomingAddress, incomingPort, this.addr, this.port);
+            ConnID incomingTuple = new ConnID(this.addr, incomingPacket.getDestPort(), incomingAddress, incomingPort);
             this.handleReceive(incomingTuple, incomingPacket);
         }
     }
@@ -629,6 +629,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
 
                             } else {
+                                // want to check whether the mapping is complete to send to dataQ for MP Sock
+                                if (payload.getLenMapping != 0) { //end of mapping
+                                    
+                                }
                                 sendAck(true);
                             }
                         }
