@@ -7,9 +7,11 @@ import java.net.DatagramPacket;
 import java.net.NetworkInterface;
 import java.net.InterfaceAddress;
 import java.util.Enumeration;
-import java.util.concurrent.SynchronousQueue;
 import java.lang.NullPointerException;
 import java.io.PrintStream;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 
 /**
@@ -44,7 +46,8 @@ public class MPSock extends TCPSock{
     long timeSent;
     int numMessages = 0;
     // MPTCP
-    List<SynchronousQueue<Message>> dataQList;
+    List<BlockingQueue<Message>> dataQList;
+    List<BlockingQueue<Message>> commandQList;
     SenderByteBuffer sendBuffer;
     ReceiverByteBuffer receiverBuffer;
 
@@ -63,7 +66,8 @@ public class MPSock extends TCPSock{
     public MPSock(InetAddress addr, int port) {
         this.addr = addr; // fishnet version
         this.port = port;
-        dataQList = new ArrayList<SynchronousQueue<Message>>();
+        dataQList = new ArrayList<BlockingQueue<Message>>();
+        commandQList = new ArrayList<BlockingQueue<Message>>();
         verboseState = Verbose.FULL;
 
         // keep hashmap of port -> socket and track the state
@@ -90,7 +94,8 @@ public class MPSock extends TCPSock{
 
     // create a new listening TCPSock
     public int listen(int backlog) {
-        TCPReceiveSock listenSock = new TCPReceiveSock(this, this.addr, this.port);
+        BlockingQueue<Message> commandQueue = new LinkedBlockingQueue<Message>();
+        TCPReceiveSock listenSock = new TCPReceiveSock(this, this.addr, this.port, null, commandQueue);
         listenSock.listen(backlog);
         this.state = State.LISTEN;
         Runnable listenSockRunnable = (Runnable) listenSock;
@@ -105,9 +110,11 @@ public class MPSock extends TCPSock{
             if (listenSock == null){
                 throw new NullPointerException("no listensock found");
             }
-            if (listenSock.accept() == null) {
-                return null;
-            }
+            Message acceptMsg = new Message(Message.Command.ACCEPT);
+            logOutput("adding accept");
+            listenSock.commandQ.offer(acceptMsg);
+            assert listenSock.commandQ.peek() != null;
+            // this needs to block!
         }
         return this; // return this MPSock as we only have one connection
     }
@@ -124,7 +131,7 @@ public class MPSock extends TCPSock{
         this.state = State.SYN_SENT;
         sendBuffer = new SenderByteBuffer(BUFFERSIZE);
         // establish a send socket
-        SynchronousQueue<Message> dataQ = new SynchronousQueue<Message>();
+        BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
         dataQList.add(dataQ);
         TCPSendSock sendSock = new TCPSendSock(this, dataQ);
         sendSock.setCID(cID);
@@ -206,9 +213,11 @@ public class MPSock extends TCPSock{
     }
 
     public TCPReceiveSock createEstSocket(ConnID cID) {
-        SynchronousQueue<Message> dataQ = new SynchronousQueue<>();
+        BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
+        BlockingQueue<Message> commandQ = new LinkedBlockingQueue<Message>();
         this.dataQList.add(dataQ);
-        TCPReceiveSock newSock = new TCPReceiveSock(this, dataQ, cID.srcPort);
+        this.commandQList.add(commandQ);
+        TCPReceiveSock newSock = new TCPReceiveSock(this, cID.srcAddr, cID.srcPort, dataQ, commandQ);
         newSock.setCID(cID);
         estMap.put(cID, newSock);
         assert (estMap.containsKey(cID));

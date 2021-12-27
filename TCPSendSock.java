@@ -11,7 +11,7 @@ import java.net.SocketTimeoutException;
 import java.net.InterfaceAddress;
 import java.util.Date;
 import java.util.Enumeration;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -117,14 +117,14 @@ public class TCPSendSock extends TCPSock implements Runnable {
     // MPTCP (move the UDP socket into this)
     private DatagramSocket socket;
     private InetAddress address;
-    SynchronousQueue<Message> dataQ;
+    BlockingQueue<Message> dataQ;
 
     public TCPSendSock(MPSock mpSock) {
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
     }
 
-    public TCPSendSock(MPSock mpSock, SynchronousQueue<Message> dataQ) {
+    public TCPSendSock(MPSock mpSock, BlockingQueue<Message> dataQ) {
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.dataQ = dataQ;

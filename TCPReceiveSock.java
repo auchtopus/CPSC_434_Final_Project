@@ -7,12 +7,13 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.DatagramPacket;
 import java.net.NetworkInterface;
+import java.net.Socket;
+import java.net.SocketException;
 import java.net.InterfaceAddress;
 import java.net.SocketTimeoutException;
 import java.util.Date;
 import java.util.Enumeration;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * <p>
@@ -113,44 +114,53 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     // MPTCP (move the UDP socket into this)
     private DatagramSocket UDPSocket;
-    SynchronousQueue<Message> dataQ;
-
-    public TCPReceiveSock(MPSock mpSock, InetAddress addr, int port) {
-        /// 
+    BlockingQueue<Message> dataQ;
+    BlockingQueue<Message> commandQ;
+    
+    public TCPReceiveSock(MPSock mpSock, InetAddress addr, int port, BlockingQueue<Message> dataQ, BlockingQueue<Message> commandQ) {
+        ///
         this.mpSock = mpSock;
         this.addr = addr;
         this.port = port;
+        this.commandQ = commandQ;
+        this.dataQ = dataQ;
         try {
             UDPSocket = new DatagramSocket(this.port, this.addr);
-            UDPSocket.setSoTimeout(100);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public TCPReceiveSock(MPSock mpSock, SynchronousQueue<Message> dataQ, int port) {
-        this.mpSock = mpSock;
-        this.port = port;
-        this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
-        this.dataQ = dataQ;
+    public void setSocketTimeout(int timeout){
+        try{
+            UDPSocket.setSoTimeout(timeout);
+        } catch (SocketException e){
+            e.printStackTrace();
+        }
     }
 
-    public TCPReceiveSock(MPSock mpSock, int sockType) {
-        this.mpSock = mpSock;
-        this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket, use this constructor to
-                                           // hardcode. TODO add array of port numbers
-        setCCAlgorithm(sockType);
-    }
-
-    public void run() {
+    public void run() { // shared by listen socket and establish sockets
         while (true) {
+            if (commandQ.peek() != null) { //
+                // process commands
+                Message.Command command = commandQ.poll().getCommand();
+
+                switch (command) {
+                    case ACCEPT:
+                        this.accept();
+                        break;
+                    case CLOSE:
+                        break;
+                }
+            }
+
             byte[] buf = new byte[500];
             DatagramPacket p = new DatagramPacket(buf, buf.length);
             try {
                 this.UDPSocket.receive(p);
             } catch (SocketTimeoutException e) {
                 continue;
-            } catch (IOException e){
+            } catch (IOException e) {
                 e.printStackTrace();
             }
 
@@ -280,9 +290,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     int receiveHandshakeMPSock(ConnID cID, MPTransport synTransport) {
         // Conn established and send ACK with MP_CAPABLE
-        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_CAPABLE, dataBuffer.getAvail(),
+        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_CAPABLE,
+                dataBuffer.getAvail(),
                 synTransport.getSeqNum(), 0, 0, new byte[0]);
-        sendSegment(cID.srcAddr, cID.destAddr, ackTransport); //here
+        sendSegment(cID.srcAddr, cID.destAddr, ackTransport); // here
         logOutput("send connection handshake Ack: " + synTransport.getSeqNum());
         return 0;
     }
@@ -291,17 +302,21 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         if (backlogSize >= backlogMax) {
             return -1;
         }
+        logOutput("received handshake:" + cID.toString());
         TCPReceiveSock newEstSock = this.mpSock.createEstSocket(cID); // here set hardcoded ports
         newEstSock.bind(cID.srcPort);
         newEstSock.role = RECEIVER;
         newEstSock.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
         newEstSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
+        newEstSock.setSocketTimeout(20);
+        
 
         this.backlogSize += 1;
         this.backlog.add(newEstSock);
-        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_JOIN, newEstSock.dataBuffer.getAvail(),
+        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_JOIN,
+                newEstSock.dataBuffer.getAvail(),
                 synTransport.getSeqNum(), 0, 0, new byte[0]);
-        sendSegment(cID.srcAddr, cID.destAddr, ackTransport); //here
+        sendSegment(cID.srcAddr, cID.destAddr, ackTransport); // here
         logOutput("send handshake Ack: " + synTransport.getSeqNum());
         newEstSock.setState(State.ESTABLISHED);
         return 0;
@@ -315,18 +330,23 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
      */
     public TCPReceiveSock accept() { // only used by a listen socket
         if (this.state == State.LISTEN) {
-            TCPReceiveSock nextSock = this.backlog.poll();
-            if (nextSock == null) {
-                // error! called accept with no
-                return null;
-            } else {
-                if (nextSock.getState() == State.ESTABLISHED) {
-                    this.sockets.add(nextSock.cID);
-                    // 3. change the state of the appropriate child socket
-                    logOutput("est socket state: " + nextSock.getState());
-                    return nextSock;
+            logOutput("accepting!");
+            while (true){
+                TCPReceiveSock nextSock = this.backlog.poll();
+                if (nextSock == null) {
+                    // error! called accept with no
+                    return null;
+                } else {
+                    nextSock.logOutput(nextSock.cID.toString() + " state: " + nextSock.getState());
+                    if (nextSock.getState() == State.ESTABLISHED) {
+                        this.sockets.add(nextSock.cID);
+                        // 3. change the state of the appropriate child socket
+                        logOutput("est socket state: " + nextSock.getState());
+                        return nextSock;
+                    }
                 }
             }
+            
         }
         return null;
     }
@@ -356,8 +376,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             return 0;
         }
         logOutput("sent syn! " + synSeq);
-        MPTransport synTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.SYN, MPTransport.MP_JOIN, 0, synSeq, DSEQ, 0, new byte[0]);
-        sendSegment(cID.srcAddr, cID.destAddr, synTransport);//here
+        MPTransport synTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.SYN, MPTransport.MP_JOIN, 0,
+                synSeq, DSEQ, 0, new byte[0]);
+        sendSegment(cID.srcAddr, cID.destAddr, synTransport);// here
         String paramTypes[] = { "java.lang.Integer" };
         Object params[] = { synSeq };
         timeSent = timeService.getTime();
@@ -386,7 +407,8 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         if (dataBuffer.getWrite() > targAck) {
             return 0;
         }
-        MPTransport updateTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0, dataBuffer.getAvail(),
+        MPTransport updateTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0,
+                dataBuffer.getAvail(),
                 dataBuffer.getWrite(), DSEQ, 0, new byte[0]);
         logOutput("window update:rp" + dataBuffer.getRead() + " wp " + dataBuffer.getWrite());
         sendSegment(cID.srcAddr, cID.destAddr, updateTransport);// here
@@ -405,7 +427,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         return 0;
     }
 
-
     public int sendAckRT() {
         return 0;
     }
@@ -415,9 +436,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             return 0;
         }
 
-        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, dataBuffer.getSendMax(),
+        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0,
+                dataBuffer.getSendMax(),
                 dataBuffer.getSendMax(), DSEQ, 0, new byte[0]);
-        sendSegment(cID.srcAddr, cID.destAddr,  ackTransport);//here
+        sendSegment(cID.srcAddr, cID.destAddr, ackTransport);// here
 
         addTimer(timeout, "sendFinRT", null, null);
         return 0;
@@ -490,8 +512,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
      */
     public void refuse() {
         logOutput("refusing!");
-        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0, new byte[0]);
-        sendSegment(cID.srcAddr, cID.destAddr, finTransport); //here
+        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
+                new byte[0]);
+        sendSegment(cID.srcAddr, cID.destAddr, finTransport); // here
         return;
     }
 
@@ -638,13 +661,14 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
                     receiveFin(payload);
 
-                this.close();
-                break;
-            case MPTransport.SYN:
-                MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0, dataBuffer.getAvail(),
-                        payload.getSeqNum(), DSEQ, 0, new byte[0]);
-                sendSegment(cID.srcAddr, cID.destAddr,  ackTransport);//here
-                break;
+                    this.close();
+                    break;
+                case MPTransport.SYN:
+                    MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0,
+                            dataBuffer.getAvail(),
+                            payload.getSeqNum(), DSEQ, 0, new byte[0]);
+                    sendSegment(cID.srcAddr, cID.destAddr, ackTransport);// here
+                    break;
             }
 
             if (canTeardown()) { // sender ONLY
@@ -741,7 +765,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     }
 
-
     public void logSendAck(boolean goodAck) {
         // System.out.print("ACKPRINT");
         if (goodAck) {
@@ -822,15 +845,12 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         return Math.min(a, (Math.min(b, c)));
     }
 
-
     void refuse(ConnID cID) {
-        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0, new byte[0]);
+        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
+                new byte[0]);
         sendSegment(cID.srcAddr, cID.destAddr, finTransport);
 
     }
-
-
-
 
     public void logError(String output) {
         log(output, System.err);
