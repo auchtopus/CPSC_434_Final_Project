@@ -6,6 +6,10 @@ public  class Message {
     Integer dsn;
     byte[] data;
     Integer length;
+    enum Command{
+        ACCEPT, CLOSE
+    }
+    Command command;
     public Message(byte[] data, Integer dsn, Integer length){
         this.data = data;
         this.dsn = dsn;
@@ -16,10 +20,19 @@ public  class Message {
     public Message(Integer dack){
         this.dack = dack;
     }
+
+    public Message(Command command){
+        this.command = command;
+    }
     
 
     public int getSize(){
         return length;
     }
+
+    public Command getCommand(){
+        return command;
+    }
+    
 
 }
