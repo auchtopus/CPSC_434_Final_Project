@@ -40,6 +40,10 @@ class ConnID {
     public String toString(){
         return "sA:" + this.srcAddr.toString() + " sP:" + Integer.toString(this.srcPort) + " dA:" + this.destAddr.toString() + " dP:" + Integer.toString(this.destPort);
     }
+
+    public ConnID reverse(){
+        return new ConnID(this.destAddr, this.destPort, this.srcAddr, this.srcPort);
+    }
 }
 
 
