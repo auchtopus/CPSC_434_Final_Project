@@ -219,8 +219,15 @@ public class MPSock extends TCPSock{
     public TCPReceiveSock createEstSocket(ConnID cID) {
         // TODO: extend to multiple IP addresses
         // need to find the next available port
-        int lowestPort = this.port;
+        ConnID reversecID = cID.reverse();
+        if (estMap.containsKey(reversecID)){
+            return null;
+        } else { // this is a unique connection, and we need to log the original (reversed) connID, though storing a null pointer, so that we can disambiguate incoming SYNs
+            estMap.put(reversecID, null);
 
+        }
+        
+        int lowestPort = this.port;
         DatagramSocket checkPort = null;
         while (true){
             try{

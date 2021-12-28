@@ -312,7 +312,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         // use the next avail port
         // port tracking
         TCPReceiveSock newEstSock = this.mpSock.createEstSocket(cID); // here set hardcoded ports
-
+        
         
         this.backlogSize += 1;
         this.backlog.add(newEstSock);
@@ -836,7 +836,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     public void log(String output, PrintStream stream) {
         if (this.verboseState == Verbose.FULL) {
-            stream.println("Node " + this.addr + ": " + output);
+            stream.println(this.addr + ": " + this.port + ":" + output);
         } else if (this.verboseState == Verbose.REPORT) {
             ;
         } else {
