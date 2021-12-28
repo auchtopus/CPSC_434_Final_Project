@@ -60,6 +60,14 @@ public class SenderIntBuffer{
         return sendMax - sendBase.intValue();
     }
 
+    public int getDSN(){
+        return buffer[loc(wp)];
+    }
+
+    public int peekDSN(){
+        return buffer[loc(wp+1)];
+    }
+
     public int write(int[] srcBuf, int pos, int len) {
         // in from srcBuf
         int wrote = 0;

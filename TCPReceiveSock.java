@@ -630,8 +630,20 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
                             } else {
                                 // want to check whether the mapping is complete to send to dataQ for MP Sock
-                                if (payload.getLenMapping != 0) { //end of mapping
-                                    
+                                int[] newDSN = new int[bytesRead];
+                                for(int i= 0; i < bytesRead; i++){
+                                    newDSN[i] = i + payload.getDSeqNum();
+                                }
+                                dsnBuffer.write(newDSN, 0, bytesRead);
+                                if (payload.getLenMapping() != 0) { //len present, final bit in mapping 
+                                    Integer len = dataBuffer.getWrite()-dataBuffer.getRead();
+                                    byte[] messagePayload = new byte[len];
+                                    int[] dumpPayload = new int[len];
+                                    dataBuffer.read(messagePayload, 0, len);
+                                    dsnBuffer.read(dumpPayload, 0, len);
+                                    //send message to BlockingQ
+                                    Message mapping = new Message(messagePayload, newDSN[bytesRead-1]-len, len);
+                                    this.dataQ.offer(mapping);
                                 }
                                 sendAck(true);
                             }
