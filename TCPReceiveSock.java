@@ -203,16 +203,20 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         }
 
         DatagramPacket packet = new DatagramPacket(UDPBuf, UDPBuf.length);
+        MPTransport transportPacket = null;
         try {
             UDPSocket.receive(packet);
-            MPTransport transportPacket = MPTransport.unpack(packet.getData());
-            handleReceive(cID, payload);
+            transportPacket = MPTransport.unpack(packet.getData());
         } catch (SocketTimeoutException e) {
             String[] paramType = { "java.net.InetAddress", "java.net.InetAddress", "MPTransport" };
             Object[] params = { srcAddr, destAddr, payload };
             addTimer(timeout, "sendSegment", paramType, params);
         } catch (IOException e) {
             e.printStackTrace();
+        }
+        if (transportPacket != null){
+            logOutput(Integer.toString(transportPacket.getSeqNum()));
+            handleReceive(cID, transportPacket);
         }
 
         return true;
@@ -259,6 +263,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         return this.port;
     }
 
+    InetAddress getAddr(){
+        return this.addr;
+    }
     /**
      * Listen for connections on a socket
      * 
@@ -290,6 +297,8 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     int receiveHandshakeMPSock(ConnID cID, MPTransport synTransport) {
         // Conn established and send ACK with MP_CAPABLE
+
+        // need a new dest port
         MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_CAPABLE,
                 dataBuffer.getAvail(),
                 synTransport.getSeqNum(), 0, 0, new byte[0]);
@@ -303,20 +312,17 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             return -1;
         }
         logOutput("received handshake:" + cID.toString());
+        // use the next avail port
+        // port tracking
         TCPReceiveSock newEstSock = this.mpSock.createEstSocket(cID); // here set hardcoded ports
-        newEstSock.bind(cID.srcPort);
-        newEstSock.role = RECEIVER;
-        newEstSock.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
-        newEstSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
-        newEstSock.setSocketTimeout(20);
-        
 
+        
         this.backlogSize += 1;
         this.backlog.add(newEstSock);
-        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_JOIN,
+        MPTransport ackTransport = new MPTransport(newEstSock.getPort(), cID.srcPort, MPTransport.ACK, MPTransport.MP_JOIN,
                 newEstSock.dataBuffer.getAvail(),
                 synTransport.getSeqNum(), 0, 0, new byte[0]);
-        sendSegment(cID.srcAddr, cID.destAddr, ackTransport); // here
+        sendSegment(newEstSock.getAddr(), cID.srcAddr, ackTransport); // here
         logOutput("send handshake Ack: " + synTransport.getSeqNum());
         newEstSock.setState(State.ESTABLISHED);
         return 0;

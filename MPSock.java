@@ -8,6 +8,7 @@ import java.net.NetworkInterface;
 import java.net.InterfaceAddress;
 import java.util.Enumeration;
 import java.lang.NullPointerException;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -213,15 +214,38 @@ public class MPSock extends TCPSock{
     }
 
     public TCPReceiveSock createEstSocket(ConnID cID) {
-        logOutput("Calling createEstSocket" + ": " + cID.toString());
+        // TODO: extend to multiple IP addresses
+        // need to find the next available port
+        int lowestPort = this.port;
+
+        DatagramSocket checkPort = null;
+        while (true){
+            try{
+                checkPort = new DatagramSocket(lowestPort);
+            } catch (IOException e){
+                lowestPort++;
+                continue;
+            } 
+            checkPort.close();
+            break;
+        }
+
+        
+        ConnID newcID = new ConnID(cID.destAddr, lowestPort, cID.srcAddr, cID.srcPort);
+        logOutput("Calling createEstSocket" + ": " + newcID.toString());
         BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
         BlockingQueue<Message> commandQ = new LinkedBlockingQueue<Message>();
         this.dataQList.add(dataQ);
         this.commandQList.add(commandQ);
-        TCPReceiveSock newSock = new TCPReceiveSock(this, cID.srcAddr, cID.srcPort, dataQ, commandQ);
-        newSock.setCID(cID);
-        estMap.put(cID, newSock);
+        TCPReceiveSock newSock = new TCPReceiveSock(this, newcID.srcAddr, newcID.srcPort, dataQ, commandQ);
+        newSock.setCID(newcID);
+        estMap.put(newcID, newSock);
+        newSock.bind(newcID.srcPort);
+        newSock.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
+        newSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
+        newSock.setSocketTimeout(20);
         assert (estMap.containsKey(cID));
+        
         return newSock;
     }
 

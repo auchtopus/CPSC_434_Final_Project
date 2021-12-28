@@ -216,6 +216,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
 
+    InetAddress getAddr(){
+        return this.addr;
+    }
+
+
     int finishHandshakeSender(ConnID cID, MPTransport ackTransport) {
         logOutput("input: " + ackTransport.getSeqNum() + " synSeq " + synSeq);
         if (ackTransport.getSeqNum() == synSeq) {
@@ -892,22 +897,20 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
             byte[] receiveData = new byte[MAX_PACKET_SIZE];
 
-            while (true) {
-                try {
-                    DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
-                    UDPSock.receive(incomingPacket);
-                    byte[] incomingPayload = incomingPacket.getData();
-                    Integer incomingPort = incomingPacket.getPort();
-                    InetAddress incomingAddress = incomingPacket.getAddress();
-                    MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
-                    ConnID ackTuple = new ConnID(this.addr, this.port, incomingAddress,
-                            incomingPort);
-                    handleReceive(cID, incomingTransport);
-                } catch (SocketTimeoutException e) {
-                    e.printStackTrace();
-                } catch (IOException e){
-                    e.printStackTrace();
-                }
+            try {
+                DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
+                UDPSock.receive(incomingPacket);
+                byte[] incomingPayload = incomingPacket.getData();
+                Integer incomingPort = incomingPacket.getPort();
+                InetAddress incomingAddress = incomingPacket.getAddress();
+                MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
+                ConnID ackTuple = new ConnID(this.addr, this.port, incomingAddress,
+                        incomingPort);
+                handleReceive(cID, incomingTransport);
+            } catch (SocketTimeoutException e) {
+                e.printStackTrace();
+            } catch (IOException e){
+                e.printStackTrace();
             }
 
             // handle receieve
