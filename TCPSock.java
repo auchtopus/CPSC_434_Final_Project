@@ -10,6 +10,9 @@ public abstract class TCPSock {
         SILENT, REPORT, FULL
     }
 
+    public TCPSock(){
+        ;
+    }
     public Verbose verboseState;
 
     public InetAddress addr;

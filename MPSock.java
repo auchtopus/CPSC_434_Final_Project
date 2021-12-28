@@ -120,6 +120,7 @@ public class MPSock extends TCPSock{
         return this; // return this MPSock as we only have one connection
     }
 
+    // fix this
     public int addSubflow(InetAddress destAddr, int destPort) {
         TCPSendSock sendSock = new TCPSendSock(this);
         sendSock.connect(destAddr, destPort); // initiate subflow connection
@@ -136,9 +137,11 @@ public class MPSock extends TCPSock{
         dataQList.add(dataQ);
         TCPSendSock sendSock = new TCPSendSock(this, dataQ);
         sendSock.setCID(cID);
-
-        // send SYN with MP_CAPABLE
         sendSock.connect(destAddr, destPort);
+        Runnable sendSockRunnable = (Runnable) sendSock;
+        Thread sendSockThread = new Thread(sendSockRunnable);
+        sendSockThread.start();
+        // send SYN with MP_CAPABLE
         return 0;
     }
 
@@ -149,7 +152,7 @@ public class MPSock extends TCPSock{
             return 0;
         }
         MPTransport synTransport = new MPTransport(sock.cID.srcPort, sock.cID.destPort, MPTransport.SYN, MPTransport.MP_CAPABLE, 0, 0, 0, 0, new byte[0]);
-        sock.sendSegment(sock.cID.srcAddr, sock.cID.destAddr, synTransport);//here
+        sock.sendSegment(sock.cID, synTransport);//here
         String paramTypes[] = { "TCPSendSock" };
         Object params[] = { sock };
         timeSent = timeService.getTime();

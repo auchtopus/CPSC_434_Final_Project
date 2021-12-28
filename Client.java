@@ -9,27 +9,10 @@ public class Client extends Thread {
     MPSock mpSock;
 
     public Client() {
-        // try {
-        // address = InetAddress.getByName("127.0.0.1");
-        // System.out.println(address);
-        // Transport transport = new Transport(4444, 4445, 0, 1, 39, 20, 40,
-        // "hello!".getBytes());
-        // buf = transport.pack();
 
-        // // buf = "hello!".getBytes();
-        // DatagramPacket packet
-        // = new DatagramPacket(buf, buf.length, address, 4445);
-        // socket.send(packet);
-        // System.out.println("send packet");
-        // } catch (Exception e){
-        // e.printStackTrace();
-        // }
 
         try {
             mpSock = new MPSock(InetAddress.getByName("127.0.0.1"), 4444);
-            // MPTransport transport = new MPTransport(4444, 4445, 0, 1, 39, 20, 40,
-            // "hello!".getBytes());
-            // byte[] buf = transport.pack();
             mpSock.connect(InetAddress.getByName("127.0.0.1"), 4445);
             mpSock.write("hello".getBytes(), 0, "hello".getBytes().length); // only buf is used for now. Change function
                                                                             // in tcpMan later

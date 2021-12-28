@@ -50,37 +50,6 @@ public class Server extends Thread {
                 for(int i = 0; i < writeBuf.length; i++){
                     System.out.print((char) writeBuf[i]);
                 }
-
-                
-
-
-
-                // byte[] buf = byte[500];
-                // DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                // mpSock.receive(packet);
-                // MPTransport transport = MPTransport.unpack(packet.getData());
-                // // String str = new String(packet.getData(), StandardCharsets.UTF_8);
-                // // System.out.println(str);
-                // // System.out.println(packet.getData());
-                // System.out.println(transport.getSrcPort());
-                // System.out.println(transport.getDestPort());
-                // System.out.println(transport.getType());
-                // System.out.println(transport.getMpType());
-                // System.out.println(transport.getWindow());
-                // System.out.println(transport.getSeqNum());
-                // System.out.println(transport.getDSeqNum());
-                // String received = new String(transport.getPayload(), 0, transport.getPayload().length);
-                // System.out.println(received);
-                // InetAddress address = packet.getAddress();
-                // int port = packet.getPort();
-                // packet = new DatagramPacket(buf, buf.length, address, port);
-                // String received = new String(packet.getData(), 0, packet.getLength());
-
-                // if (received.equals("end")) {
-                //     running = false;
-                //     continue;
-                // }
-                // socket.send(packet);
             } catch (Exception e) {
                 e.printStackTrace();
             }
