@@ -1,6 +1,6 @@
 import java.util.concurrent.atomic.*;
 
-public class SenderIntBuffer{
+public class SenderIntBuffer extends Buffer{
     int[] buffer;
     AtomicInteger sendBase;
     int sendMax; // write head; also the nextseqnum

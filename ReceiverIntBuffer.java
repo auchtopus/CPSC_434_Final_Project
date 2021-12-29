@@ -9,7 +9,7 @@ Invariants:
 
 */
 
-public class ReceiverIntBuffer{
+public class ReceiverIntBuffer extends Buffer{
     int[] buffer;
     int rp;
     AtomicInteger wp;

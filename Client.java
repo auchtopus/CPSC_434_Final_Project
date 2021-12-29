@@ -1,9 +1,4 @@
-import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.DatagramPacket;
-import java.net.NetworkInterface;
-import java.net.InterfaceAddress;
-import java.util.Enumeration;
 
 public class Client {
     MPSock mpSock;
