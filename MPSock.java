@@ -217,12 +217,10 @@ public class MPSock extends TCPSock{
     }
 
     public TCPReceiveSock createEstSocket(ConnID cID) {
-        // TODO: extend to multiple IP addresses
-        // need to find the next available port
         ConnID reversecID = cID.reverse();
         if (estMap.containsKey(reversecID)){
             return null;
-        } else { // this is a unique connection, and we need to log the original (reversed) connID, though storing a null pointer, so that we can disambiguate incoming SYNs
+        } else { 
             estMap.put(reversecID, null);
 
         }
@@ -255,6 +253,11 @@ public class MPSock extends TCPSock{
         newSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
         newSock.setSocketTimeout(20);
         assert (estMap.containsKey(cID));
+        
+        // run the new sock as a separate thread
+        Runnable receiveSockRunnable = (Runnable) newSock;
+        Thread receiveSockThread= new Thread(receiveSockRunnable);
+        receiveSockThread.start();
         
         return newSock;
     }

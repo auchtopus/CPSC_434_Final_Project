@@ -124,6 +124,8 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         this.port = port;
         this.commandQ = commandQ;
         this.dataQ = dataQ;
+        this.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
+        this.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
         try {
             UDPSock = new DatagramSocket(this.port, this.addr);
         } catch (Exception e) {
@@ -179,7 +181,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         Integer incomingPort = incomingPacket.getPort();
         InetAddress incomingAddress = incomingPacket.getAddress();
         MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
-        ConnID incomingcID = new ConnID(incomingAddress, incomingPort, this.addr, incomingTransport.getDestPort());
+        ConnID incomingcID = new ConnID(incomingAddress, incomingTransport.getSrcPort(), this.addr, incomingTransport.getDestPort());
         handleReceive(incomingcID, incomingTransport);
         return;
 }
@@ -205,9 +207,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         try {
             receive();
         } catch (SocketTimeoutException e) {
-            String[] paramType = { "ConnID", "MPTransport" };
-            Object[] params = { cID, payload };
-            addTimer(timeout, "sendSegment", paramType, params);
+            ; // don't need to reset timer for sendsegment;
         } catch (IOException e) {
             e.printStackTrace();
         } catch (NullPointerException e){
@@ -310,8 +310,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         logOutput("received handshake:" + cID.toString());
         // use the next avail port
         // port tracking
-        TCPReceiveSock newEstSock = this.mpSock.createEstSocket(cID); // here set hardcoded ports
-        
+        TCPReceiveSock newEstSock = mpSock.createEstSocket(cID); // here set hardcoded ports
+        if (newEstSock == null){
+            return 0;
+        }
         
         this.backlogSize += 1;
         this.backlog.add(newEstSock);
@@ -590,6 +592,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         logOutput("===== RECEIVE STATE ======");
         printTransport(payload);
         logReceive(payload);
+        printcID(cID);
         socketStatus();
         logOutput("==========================");
         if (payload.getType() == MPTransport.SYN && payload.getMpType() == MPTransport.MP_CAPABLE) { // incoming MPTCP
@@ -600,10 +603,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             if (this.receiveHandshakeListener(cID, payload) == -1) {
                 refuse();
             }
-        } else if (getState() == State.SYN_SENT) {
-            this.finishHandshakeSender(cID, payload);
         } else if (getState() == State.ESTABLISHED || getState() == State.SHUTDOWN) {
-
             switch (payload.getType()) {
                 case MPTransport.DATA: // we are receiver and getting a data
                     if (this.role != RECEIVER) {
@@ -746,10 +746,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                         + dataBuffer.getWrite()
                         + " state:" + state + " RWND:" + RWND + " CWND:" + CWND);
             } else {
-                logOutput("rp" + dataBuffer.getRead() + " wp:" + dataBuffer.getWrite() + " state:" + state);
+                logOutput("rp:" + dataBuffer.getRead() + " wp:" + dataBuffer.getWrite() + " state:" + state);
             }
-        } catch (Exception E) {
-            ;
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
     }

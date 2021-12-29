@@ -137,21 +137,21 @@ public class MPTransport {
     public byte[] pack() {
 
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-        // // write 2 bytes for src port
+        // // write 4 bytes for src port
         byte[] srcPortByteArray = (BigInteger.valueOf(this.srcPort)).toByteArray();
-        int paddingLength = 2 - srcPortByteArray.length;
+        int paddingLength = 4 - srcPortByteArray.length;
         for (int i = 0; i < paddingLength; i++) {
             byteStream.write(0);
         }
-        byteStream.write(srcPortByteArray, 0, Math.min(srcPortByteArray.length, 2));
+        byteStream.write(srcPortByteArray, 0, Math.min(srcPortByteArray.length, 4));
 
-        // // write 2 bytes for dest port
+        // // write 4 bytes for dest port
         byte[] destPortByteArray = (BigInteger.valueOf(this.destPort)).toByteArray();
-        paddingLength = 2 - destPortByteArray.length;
+        paddingLength = 4 - destPortByteArray.length;
         for (int i = 0; i < paddingLength; i++) {
             byteStream.write(0);
         }
-        byteStream.write(destPortByteArray, 0, Math.min(destPortByteArray.length, 2));
+        byteStream.write(destPortByteArray, 0, Math.min(destPortByteArray.length, 4));
 
         // byteStream.write(this.srcPort);
         // byteStream.write(this.destPort);
@@ -207,14 +207,14 @@ public class MPTransport {
     public static MPTransport unpack(byte[] packet) {
         ByteArrayInputStream byteStream = new ByteArrayInputStream(packet);
 
-        byte[] srcPortByteArray = new byte[2];
-        if (byteStream.read(srcPortByteArray, 0, 2) != 2) {
+        byte[] srcPortByteArray = new byte[4];
+        if (byteStream.read(srcPortByteArray, 0, 4) != 4) {
             return null;
         }
         int srcPort = (new BigInteger(srcPortByteArray)).intValue();
 
-        byte[] destPortByteArray = new byte[2];
-        if (byteStream.read(destPortByteArray, 0, 2) != 2) {
+        byte[] destPortByteArray = new byte[4];
+        if (byteStream.read(destPortByteArray, 0, 4) != 4) {
             return null;
         }
         int destPort = (new BigInteger(destPortByteArray)).intValue();

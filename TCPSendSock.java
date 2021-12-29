@@ -123,11 +123,13 @@ public class TCPSendSock extends TCPSock implements Runnable {
     public TCPSendSock(MPSock mpSock) {
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
+        this.port = this.mpSock.getPort();
     }
 
     public TCPSendSock(MPSock mpSock, BlockingQueue<Message> dataQ) {
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
+        this.port = this.mpSock.getPort();
         this.dataQ = dataQ;
     }
 
@@ -157,9 +159,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
         try {
             receive();
         } catch (SocketTimeoutException e) {
-            String[] paramType = { "ConnID", "MPTransport" };
-            Object[] params = { cID, payload };
-            addTimer(timeout, "sendSegment", paramType, params);
+            ; // don't want none of this
         } catch (IOException e) {
             e.printStackTrace();
         } catch (NullPointerException e) {
@@ -218,6 +218,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
             estRTT = timeService.getTime() - timeSent;
             devRTT = 0;
             this.setState(State.ESTABLISHED);
+            this.cID = cID.reverse(); // incoming from the new est socket
             RWND = ackTransport.getWindow();
             return 0;
         } else {
@@ -285,8 +286,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
             return 0;
         }
 
-        logOutput("Sending: " + dataTransport.getSeqNum() + " size: " + (dataTransport.getSeqNum()) + " ackwant: "
-                + dataBuffer.getSendBase());
+
+
         sendSegment(cID, dataTransport);// here
         String paramTypes[] = { "MPTransport" };
         Object params[] = { dataTransport };
@@ -547,11 +548,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
             sendDataRT(dataTransport);
             newPayloadSize = getPayloadSize();
         }
-        logOutput("Trying to send packet of 0 bytes");
 
     }
 
     public int getPayloadSize() {
+        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent()) + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
         return Math.max(0, min(MAX_PAYLOAD_SIZE, dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
     }
@@ -566,11 +567,10 @@ public class TCPSendSock extends TCPSock implements Runnable {
         logOutput("===== RECEIVE STATE ======");
         printTransport(payload);
         logReceive(payload);
+        printcID(cID);
         socketStatus();
         logOutput("==========================");
-        if (payload.getType() == MPTransport.ACK && payload.getMpType() == MPTransport.MP_CAPABLE) { // established
-                                                                                                     // MPTCP
-                                                                                                     // Connection
+        if (payload.getType() == MPTransport.ACK && payload.getMpType() == MPTransport.MP_CAPABLE) {
             connect(cID.destAddr, cID.destPort); // send SYN to establish subflow
         } else if (getState() == State.SYN_SENT) {
             this.finishHandshakeSender(cID, payload);
@@ -586,7 +586,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
                         int ackNum = payload.getSeqNum();
                         sampleRTT = getRTT(ackNum);
                         if (ackNum > dataBuffer.getSendBase()) {
-                            //
                             // extract this code
                             if (ackNum == lastTransport.getSeqNum() + lastTransport.getPayload().length) {
                                 logOutput("SAMPLE! acknum" + ackNum + " targetseqnum:" + lastTransport.getSeqNum()
@@ -755,8 +754,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
      */
 
     public void printTransport(MPTransport t) {
-        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|wsize:" + t.getWindow() + "|psize:"
-                + t.getPayload().length);
+        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|dseq:" + t.getDSeqNum() + "|wsize:" + t.getWindow() + "|plen:"
+                + t.getPayload().length + "|mlen:" + t.getLenMapping());
     }
 
     public void printcID(ConnID cID) {
@@ -863,10 +862,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
         while (true) {
             // handle incoming data
             Message mapping;
-            if (!dataQ.isEmpty()) {
+            if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
+                logOutput("Processing Queue element!");
                 try {
 
-                    mapping = dataQ.poll(100, TimeUnit.MILLISECONDS);
+                    mapping = dataQ.poll(10, TimeUnit.MILLISECONDS);
 
                     // update the dsn index
                     int[] newDSN = new int[mapping.getSize()];
@@ -877,7 +877,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
                     // update the actual data
                     dataBuffer.write(mapping.data, 0, mapping.getSize());
-
+                    logOutput("sending Data");
                     sendData();
 
                 } catch (InterruptedException e) {
@@ -902,10 +902,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
         DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
         UDPSock.receive(incomingPacket);
         byte[] incomingPayload = incomingPacket.getData();
-        Integer incomingPort = incomingPacket.getPort();
+        // Integer incomingPort = incomingPacket.getPort();
+        // logOutput("found port:" + Integer.toString(incomingPort));
         InetAddress incomingAddress = incomingPacket.getAddress();
         MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
-        ConnID incomingcID = new ConnID(incomingAddress, incomingPort, this.addr, incomingTransport.getDestPort());
+        ConnID incomingcID = new ConnID(incomingAddress, incomingTransport.getSrcPort(), this.addr, incomingTransport.getDestPort());
         handleReceive(incomingcID, incomingTransport);
         return;
     }
