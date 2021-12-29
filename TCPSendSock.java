@@ -1,20 +1,11 @@
-import java.util.*;
-import java.io.IOException;
-import java.io.PrintStream;
+import java.lang.*;
+import java.lang.Integer;
 import java.lang.reflect.Method;
-import java.lang.Thread;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.DatagramPacket;
-import java.net.NetworkInterface;
-import java.net.Socket;
-import java.net.SocketTimeoutException;
-import java.net.InterfaceAddress;
-import java.util.Date;
-import java.util.Enumeration;
+import java.util.*;
+import java.net.*;
+import java.io.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * <p>
@@ -38,89 +29,16 @@ import java.util.concurrent.TimeoutException;
  */
 
 public class TCPSendSock extends TCPSock implements Runnable {
-    final int SENDER = 0;
-    final int RECEIVER = 1;
-    final int LISTENER = 2;
-    final int DSEQ = 0; // this is a placeholder for what DSEQ should actually be in all Data packets
-    final boolean STOPWAIT = false;
-    final int BUFFERSIZE = 600;
-    int MAX_PAYLOAD_SIZE = MPTransport.MAX_PAYLOAD_SIZE;
-    int MAX_PACKET_SIZE = MPTransport.MAX_PACKET_SIZE;
-    int MSS = 128;
-    Date timeService = new Date();
 
-    Verbose verboseState = Verbose.FULL;
-    boolean DELAY = false;
-
-    // TCP socket states
-
-    // timer: java.lang.Integer
-    // time_wait: keep responding to ack,
-    Random randGen = new Random(43);
-
-    static int maxPort = 1000;
-    // Node node; //here
-    MPSock mpSock;
-    InetAddress addr;
-    int synSeq;
-    int finSeq;
-    private int port;
-    private State state;
-    ConnID cID;
-    int role = LISTENER;
+    /* Send sock only */
     SenderByteBuffer dataBuffer;
     SenderIntBuffer dsnBuffer;
-    private DatagramSocket UDPSock;
-    // need to set a timeout
-    private byte[] UDPBuf = new byte[MAX_PAYLOAD_SIZE + 8]; // 8 bytes for UDP Header
 
-    /* Listen socket only */
-    int backlogSize;
-    int backlogMax;
-    Queue<TCPSendSock> backlog = new LinkedList<TCPSendSock>();
-    HashSet<ConnID> sockets = new HashSet<ConnID>();
-
-    /* Timeout controls */
-    MPTransport lastTransport;
-    long timeSent;
-
-    long estRTT;
-    long sampleRTT;
-    long devRTT;
-
-    /* TCP controls */
-    int CWND = 64;
-    int RWND = 0;
-
-    /* Reno */
-    double renoMD = 0.5;
-    int renoCWND = MSS * 2;
-
-    /* Cubic */
-    double cubicBeta = 0.7;
-    double cubicC = 2;
-    int cubicCWND = CWND;
-    int ackCnt = 0;
-    int epochStart;
-    long lossTimeStamp;
-    double wMax = 0;
-    boolean cubicInit = false;
-    float cubicK;
-    boolean useCubic = false;
-
-    int ackCounter = 0;
-
-    /* timer controls */
-    int timeout = 1000;
-    /* open/close acks */
-    int nextAckNum = 0;
-
-    // MPTCP (move the UDP socket into this)
-    private DatagramSocket socket;
-    private InetAddress address;
-    BlockingQueue<Message> dataQ;
-
+    /*
+     * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
+     */
     public TCPSendSock(MPSock mpSock) {
+        super();
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.port = this.mpSock.getPort();
@@ -133,83 +51,74 @@ public class TCPSendSock extends TCPSock implements Runnable {
         this.dataQ = dataQ;
     }
 
-    public void setCID(ConnID cID) { // create listen socket
-        this.cID = cID;
+    public void run() {
+        while (true) {
+            // handle incoming data
+            Message mapping;
+            if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
+                logOutput("Processing Queue element!");
+                try {
 
+                    mapping = dataQ.poll(10, TimeUnit.MILLISECONDS);
+
+                    // update the dsn index
+                    int[] newDSN = new int[mapping.getSize()];
+                    for (int i = 0; i < mapping.getSize(); i++) {
+                        newDSN[i] = i + mapping.dsn;
+                    }
+                    dsnBuffer.write(newDSN, 0, mapping.getSize());
+
+                    // update the actual data
+                    dataBuffer.write(mapping.data, 0, mapping.getSize());
+                    logOutput("sending Data");
+                    sendData();
+
+                } catch (InterruptedException e) {
+                    ;
+                }
+            }
+
+            try {
+                receive();
+            } catch (SocketTimeoutException e) {
+                ;
+            } catch (Exception e) {
+                ;
+            }
+
+            // handle receieve
+        }
     }
 
-    public Boolean sendSegment(ConnID cID, MPTransport payload) {
-        logOutput("===== SEND SEGMENT STATE ======");
-        printTransport(payload);
-        printcID(cID);
-        socketStatus();
-        lastTransport = payload;
-        timeSent = timeService.getTime();
-        byte[] bytePayload = payload.pack();
-        // Brian send!
+    public void addTimer(long deltaT, String methodName, String[] paramType, Object[] params) {
         try {
-            // payload = "hello!".getBytes();
-            DatagramPacket packet = new DatagramPacket(bytePayload, bytePayload.length, cID.destAddr, cID.destPort);
-            UDPSock.send(packet);
+            JavaTimer timer = new JavaTimer(deltaT, this, methodName, paramType, params);
         } catch (Exception e) {
             e.printStackTrace();
-            return false;
         }
+    }
 
+    /* Connection Startup */
+
+    public int connect(InetAddress destAddr, int destPort) {
+        dataBuffer = new SenderByteBuffer(BUFFERSIZE);
+        dsnBuffer = new SenderIntBuffer(BUFFERSIZE);
+        this.cID = new ConnID(this.addr, this.port, destAddr, destPort);
         try {
-            receive();
-        } catch (SocketTimeoutException e) {
-            ; // don't want none of this
-        } catch (IOException e) {
+            UDPSock = new DatagramSocket(this.port);
+            UDPSock.setSoTimeout(20);
+        } catch (Exception e) {
             e.printStackTrace();
-        } catch (NullPointerException e) {
-            ;
         }
+        state = State.SYN_SENT;
+        synSeq = randGen.nextInt(50) + 10;
+        logOutput("syn seq: " + synSeq);
+        sendSynRT(synSeq);
 
-        return true;
+        this.role = SENDER;
 
-        // logOutput("===============================");
-        // logSender(payload);
-
-    }
-
-    /**
-     *
-     * @param localPort int local port number to bind the socket to
-     * @return int 0 on success, -1 otherwise
-     */
-    public int bindListen(int localPort) {
-        if (!mpSock.checkPort(localPort)) {
-            this.port = localPort;
-            this.state = State.CLOSED;
-            return 0;
-        } else {
-            return -1;
-        }
-
-    }
-
-    // bind non-unique establish socket
-    public int bind(int localPort) {
-        this.port = localPort;
-        this.state = State.CLOSED;
+        // TODO: configure timer
         return 0;
-    }
-
-    void setState(State state) {
-        this.state = state;
-    }
-
-    public State getState() {
-        return this.state;
-    }
-
-    int getPort() {
-        return this.port;
-    }
-
-    InetAddress getAddr() {
-        return this.addr;
     }
 
     int finishHandshakeSender(ConnID cID, MPTransport ackTransport) {
@@ -227,43 +136,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     }
 
-    int receiveHandshakeMPSock(ConnID cID, MPTransport synTransport) {
-        // Conn established and send ACK with MP_CAPABLE
-        MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, MPTransport.MP_CAPABLE,
-                dataBuffer.getAvail(),
-                synTransport.getSeqNum(), 0, 0, new byte[0]);
-        sendSegment(cID, ackTransport); // here
-        logOutput("send connection handshake Ack: " + synTransport.getSeqNum());
-        return 0;
-    }
+    /* Data Senders */
 
-    /**
-     * Accept a connection on a socket; this means to begin reading// remove from
-     * the backlogs
-     *
-     * @return TCPSendSock The first established connection on the request queue
-     */
-
-    public boolean isConnectionPending() {
-        return (state == State.SYN_SENT);
-    }
-
-    public boolean isClosed() {
-        return (state == State.CLOSED);
-    }
-
-    public boolean isConnected() {
-        return (state == State.ESTABLISHED);
-    }
-
-    public boolean isClosurePending() {
-        return (state == State.SHUTDOWN || state == State.FIN_SENT);
-    }
-
-    /* Timeout handler */
-
-    // TOOD: move to cumulative ack
-    /** Retransmission wrappers */
     public int sendSynRT(Integer synSeq) {
         if (state != State.SYN_SENT) {
             return 0;
@@ -285,8 +159,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
             logOutput("disable timer!" + dataTransport.getSeqNum());
             return 0;
         }
-
-
 
         sendSegment(cID, dataTransport);// here
         String paramTypes[] = { "MPTransport" };
@@ -322,211 +194,9 @@ public class TCPSendSock extends TCPSock implements Runnable {
         return 0;
     }
 
-    /**
-     * Initiate connection to a remote socket; establish as a send socket
-     *
-     * @param destAddr int Destination node address
-     * @param destPort int Destination port
-     * @return int 0 on success, -1
-     */
+    /* Transmission */
 
-    public int connect(InetAddress destAddr, int destPort) {
-        dataBuffer = new SenderByteBuffer(BUFFERSIZE);
-        dsnBuffer = new SenderIntBuffer(BUFFERSIZE);
-        this.cID = new ConnID(this.addr, this.port, destAddr, destPort);
-        try {
-            UDPSock = new DatagramSocket(this.port);
-            UDPSock.setSoTimeout(20);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        state = State.SYN_SENT;
-        synSeq = randGen.nextInt(50) + 10;
-        logOutput("syn seq: " + synSeq);
-        sendSynRT(synSeq);
-
-        this.role = SENDER;
-
-        // TODO: configure timer
-        return 0;
-    }
-
-    public void addTimer(long deltaT, String methodName, String[] paramType, Object[] params) {
-        try {
-            JavaTimer timer = new JavaTimer(deltaT, this, methodName, paramType, params);
-            // Method method = Callback.getMethod(methodName, this, paramType);
-            // Callback cb = new Callback(method, this, params);
-            // this.mpSock.manager.addTimer(addr, deltaT, cb);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Initiate closure of a connection (graceful shutdown)
-     */
-
-    // receiever cannot inidiate shutdown
-    public void close() {
-        if (state == State.TIME_WAIT) {
-            return;
-        }
-        this.state = State.SHUTDOWN;
-        if (canTeardown()) {
-            initTeardown();
-        }
-
-    }
-
-    public boolean canTeardown() {
-        return (role == SENDER && dataBuffer.getSendBase() == dataBuffer.getSendMax() && dataBuffer.getUnsent() == 0
-                && dataBuffer.getUnAcked() == 0 && state == State.SHUTDOWN);
-    }
-
-    public int initTeardown() { // to send the fin
-        // only called if the buffers are clear
-        sendFinRT();
-        finSeq = dataBuffer.getSendMax();
-        state = State.FIN_SENT;
-        addTimer(3000, "completeTeardown", null, null);
-        return 0;
-    }
-
-    public void completeTeardown() { // complete teardown
-        state = State.CLOSED;
-        if (role == RECEIVER) {
-            mpSock.removeReceiver(cID);
-        } else if (role == SENDER) {
-            mpSock.removeSender(cID);
-        }
-    }
-
-    public void receiveFin(MPTransport finTransport) {
-        logOutput("RECEIVED FIN, going into TIME_WAIT");
-        sendAck(true);
-        state = State.TIME_WAIT;
-        addTimer(3000, "completeTeardown", null, null);
-
-    }
-
-    public void removeEstSocket(ConnID cID) {
-        this.sockets.remove(cID);
-    }
-
-    /**
-     * Release a connection immediately (abortive shutdown)
-     */
-    public void refuse() {
-        logOutput("refusing!");
-        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
-                new byte[0]);
-        sendSegment(cID, finTransport); // here
-        return;
-    }
-
-    public void release() {
-        refuse();
-        state = State.FIN_SENT;
-
-    }
-
-    public long getRTT(int newAck) {
-        if (lastTransport != null && lastTransport.getSeqNum() + lastTransport.getPayload().length == newAck) {
-            return timeService.getTime() - timeSent;
-        } else {
-            return -1;
-        }
-
-    }
-
-    public void renoAck(int oldAck, int recvAck) {
-        assert (recvAck > oldAck);
-        renoCWND += (int) ((recvAck - oldAck) * MSS / renoCWND);
-    }
-
-    public void renoLoss() {
-        renoCWND = (int) (renoMD * renoCWND);
-    }
-
-    public double computeCubic(double timeElapse) {
-
-        double wCubic = (double) (cubicC * Math.pow(timeElapse / 1000 - cubicK, 3) + wMax);
-        // System.out.println("tElapse: " + timeElapse + " cubicK:" + cubicK + " wmax:"
-        // + wMax + "wCubic:" + wCubic);
-        return wCubic;
-    }
-
-    public void cubicAck(double RTT) {
-        // if an RTT exists, use RTT; otherwwise pass -1 and use the estRTT;
-        double elapse = timeService.getTime() - lossTimeStamp;
-        double localRTT;
-        if (RTT > 0) {
-            localRTT = RTT;
-        } else {
-            localRTT = estRTT;
-        }
-        double wCubic = computeCubic(elapse + localRTT);
-        cubicCWND += (wCubic - cubicCWND) / cubicCWND * MSS;
-    }
-
-    public void cubicLoss() {
-        wMax = cubicCWND;
-        cubicCWND = (int) (cubicBeta * cubicCWND);
-        cubicK = (float) (Math.cbrt(wMax * (1 - cubicBeta) / cubicC));
-        lossTimeStamp = timeService.getTime();
-        // System.out.println("wMax:" + wMax + " cubkcK:" + cubicK + " cubicCWND:" +
-        // cubicCWND);
-    }
-
-    // use estRTT instead of dMin
-
-    public void updateAck(int oldAck, int recvAck, int newRWND, long RTT) { // updates the window (so adjusts sendbase,
-                                                                            // queue, etc. etc.))
-        // update rate control
-        RWND = newRWND;
-        // System.out.println("old cwnd:" + CWND);
-        renoAck(oldAck, recvAck);
-        if (useCubic && cubicInit) {
-            cubicAck(RTT);
-        }
-
-        if (cubicInit) {
-            if (Math.max(renoCWND, cubicCWND) < wMax) { // not probing
-                CWND = Math.max(renoCWND, cubicCWND);
-            } else {
-                CWND = cubicCWND;
-            }
-        } else {
-            CWND = renoCWND;
-            cubicCWND = CWND;
-        }
-        // System.out.println("new cwnd:" + CWND + " cubic: " + cubicCWND + "reno:" +
-        // renoCWND);
-        // dataBuffer.getState();
-
-    }
-
-    public void updateLoss() {
-        // System.out.println("LOSS EVENT");
-        renoLoss();
-
-        if (useCubic && !cubicInit) {
-            lossTimeStamp = timeService.getTime();
-            cubicInit = true;
-            cubicLoss();
-        } else {
-            cubicLoss();
-        }
-        if (Math.max(renoCWND, cubicCWND) < wMax) { // not probing
-            CWND = Math.max(renoCWND, cubicCWND);
-        } else {
-            CWND = cubicCWND;
-        }
-        // System.out.println("new cwnd:" + CWND + " cubic: " + cubicCWND + "reno:" +
-        // renoCWND);
-    }
-
-    public void sendData() {
+    void sendData() {
         int newPayloadSize = getPayloadSize();
         while (newPayloadSize > 0) {
             // read through the databuffer index looking for incongruity
@@ -549,18 +219,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
             newPayloadSize = getPayloadSize();
         }
 
-    }
-
-    public int getPayloadSize() {
-        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent()) + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
-        return Math.max(0, min(MAX_PAYLOAD_SIZE, dataBuffer.getUnsent(),
-                Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
-    }
-
-    public void fastRetransmit() {
-        // we can assume that everything in the air has been lost?
-        dataBuffer.reset();
-        sendData();
     }
 
     public void handleReceive(ConnID cID, MPTransport payload) {
@@ -667,7 +325,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
             if (payload.getType() == MPTransport.ACK) {
                 // don't bother checking the ack LOL
                 state = State.CLOSED;
-                completeTeardown();
+                completeTeardownRT();
             } else if (payload.getType() == MPTransport.FIN) {
                 sendAck(true);
             }
@@ -676,6 +334,181 @@ public class TCPSendSock extends TCPSock implements Runnable {
         } else if (getState() == State.CLOSED) {
             ;// we are done
         }
+
+    }
+
+    /* Shutdown */
+
+    /* Graceful shutdown */
+    public void close() {
+        if (state == State.TIME_WAIT) {
+            return;
+        }
+        this.state = State.SHUTDOWN;
+        if (canTeardown()) {
+            initTeardown();
+        }
+
+    }
+
+    /* releasse immediately (abortive shutdown) */
+    public void release() {
+        refuse();
+        state = State.FIN_SENT;
+
+    }
+
+    boolean canTeardown() {
+        return (role == SENDER && dataBuffer.getSendBase() == dataBuffer.getSendMax() && dataBuffer.getUnsent() == 0
+                && dataBuffer.getUnAcked() == 0 && state == State.SHUTDOWN);
+    }
+
+    int initTeardown() { // to send the fin
+        // only called if the buffers are clear
+        sendFinRT();
+        finSeq = dataBuffer.getSendMax();
+        state = State.FIN_SENT;
+        addTimer(3000, "completeTeardownRT", null, null);
+        return 0;
+    }
+
+    public void completeTeardownRT() { // complete teardown
+        state = State.CLOSED;
+        if (role == RECEIVER) {
+            mpSock.removeReceiver(cID);
+        } else if (role == SENDER) {
+            mpSock.removeSender(cID);
+        }
+    }
+
+    void receiveFin(MPTransport finTransport) {
+        logOutput("RECEIVED FIN, going into TIME_WAIT");
+        sendAck(true);
+        state = State.TIME_WAIT;
+        addTimer(3000, "completeTeardownRT", null, null);
+
+    }
+
+    // void removeEstSocket(ConnID cID) {
+    // this.sockets.remove(cID);
+    // }
+
+    /* CC, FC, Reno, Cubic */
+
+    long getRTT(int newAck) {
+        if (lastTransport != null && lastTransport.getSeqNum() + lastTransport.getPayload().length == newAck) {
+            return timeService.getTime() - timeSent;
+        } else {
+            return -1;
+        }
+
+    }
+
+    void renoAck(int oldAck, int recvAck) {
+        assert (recvAck > oldAck);
+        renoCWND += (int) ((recvAck - oldAck) * MSS / renoCWND);
+    }
+
+    void renoLoss() {
+        renoCWND = (int) (renoMD * renoCWND);
+    }
+
+    double computeCubic(double timeElapse) {
+
+        double wCubic = (double) (cubicC * Math.pow(timeElapse / 1000 - cubicK, 3) + wMax);
+        // System.out.println("tElapse: " + timeElapse + " cubicK:" + cubicK + " wmax:"
+        // + wMax + "wCubic:" + wCubic);
+        return wCubic;
+    }
+
+    void cubicAck(double RTT) {
+        // if an RTT exists, use RTT; otherwwise pass -1 and use the estRTT;
+        double elapse = timeService.getTime() - lossTimeStamp;
+        double localRTT;
+        if (RTT > 0) {
+            localRTT = RTT;
+        } else {
+            localRTT = estRTT;
+        }
+        double wCubic = computeCubic(elapse + localRTT);
+        cubicCWND += (wCubic - cubicCWND) / cubicCWND * MSS;
+    }
+
+    void cubicLoss() {
+        wMax = cubicCWND;
+        cubicCWND = (int) (cubicBeta * cubicCWND);
+        cubicK = (float) (Math.cbrt(wMax * (1 - cubicBeta) / cubicC));
+        lossTimeStamp = timeService.getTime();
+        // System.out.println("wMax:" + wMax + " cubkcK:" + cubicK + " cubicCWND:" +
+        // cubicCWND);
+    }
+
+    void updateAck(int oldAck, int recvAck, int newRWND, long RTT) { // updates the window (so adjusts sendbase,
+                                                                     // queue, etc. etc.))
+        // update rate control
+        RWND = newRWND;
+        // System.out.println("old cwnd:" + CWND);
+        renoAck(oldAck, recvAck);
+        if (useCubic && cubicInit) {
+            cubicAck(RTT);
+        }
+
+        if (cubicInit) {
+            if (Math.max(renoCWND, cubicCWND) < wMax) { // not probing
+                CWND = Math.max(renoCWND, cubicCWND);
+            } else {
+                CWND = cubicCWND;
+            }
+        } else {
+            CWND = renoCWND;
+            cubicCWND = CWND;
+        }
+        // System.out.println("new cwnd:" + CWND + " cubic: " + cubicCWND + "reno:" +
+        // renoCWND);
+        // dataBuffer.getState();
+
+    }
+
+    void updateLoss() {
+        // System.out.println("LOSS EVENT");
+        renoLoss();
+
+        if (useCubic && !cubicInit) {
+            lossTimeStamp = timeService.getTime();
+            cubicInit = true;
+            cubicLoss();
+        } else {
+            cubicLoss();
+        }
+        if (Math.max(renoCWND, cubicCWND) < wMax) { // not probing
+            CWND = Math.max(renoCWND, cubicCWND);
+        } else {
+            CWND = cubicCWND;
+        }
+        // System.out.println("new cwnd:" + CWND + " cubic: " + cubicCWND + "reno:" +
+        // renoCWND);
+    }
+
+    int getPayloadSize() {
+        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
+                + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
+        return Math.max(0, min(MAX_PAYLOAD_SIZE, dataBuffer.getUnsent(),
+                Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
+    }
+
+    void fastRetransmit() {
+        // we can assume that everything in the air has been lost?
+        dataBuffer.reset();
+        sendData();
+    }
+
+    void setCCAlgorithm(int type) {
+        if (type == 1) {
+            useCubic = true;
+            return;
+        }
+        useCubic = false;
+        return;
 
     }
 
@@ -725,221 +558,22 @@ public class TCPSendSock extends TCPSock implements Runnable {
             state = State.CLOSED;
             return 0;
         }
-        // dataBuffer.getState();
         logOutput("===== Before read  =====");
         int bytesRead = dataBuffer.read(buf, pos, len);
         logOutput("===== After read   =====");
-        // dataBuffer.getState();
-
-        // if (sendUpdate) {
-        // int currAck = dataBuffer.getWrite();
-        // // sendWindowUpdateRT(currAck);
-        // }
 
         return bytesRead;
     }
 
-    public void setCCAlgorithm(int type) {
-        if (type == 1) {
-            useCubic = true;
-            return;
-        }
-        useCubic = false;
-        return;
-
-    }
-
-    /*
-     * Logging
-     */
-
-    public void printTransport(MPTransport t) {
-        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|dseq:" + t.getDSeqNum() + "|wsize:" + t.getWindow() + "|plen:"
-                + t.getPayload().length + "|mlen:" + t.getLenMapping());
-    }
-
-    public void printcID(ConnID cID) {
-        logOutput(cID.toString());
-    }
-
     public void socketStatus() {
         try {
-            if (role == SENDER) {
-                // buffer.getState();
-                logOutput("sb: " + dataBuffer.getSendBase() + " sm " + dataBuffer.getSendMax() + " wp:"
-                        + dataBuffer.getWrite()
-                        + " state:" + state + " RWND:" + RWND + " CWND:" + CWND);
-            } else {
-                logOutput("rp" + dataBuffer.getRead() + " wp:" + dataBuffer.getWrite() + " state:" + state);
-            }
+            logOutput("sb: " + dataBuffer.getSendBase() + " sm " + dataBuffer.getSendMax() + " wp:"
+                    + dataBuffer.getWrite()
+                    + " state:" + state + " RWND:" + RWND + " CWND:" + CWND);
         } catch (Exception E) {
             ;
         }
 
     }
 
-    public void logSendAck(boolean goodAck) {
-        // System.out.print("ACKPRINT");
-        if (goodAck) {
-            System.out.print(".");
-        } else {
-            System.out.print("?");
-        }
-    }
-
-    public void logSender(MPTransport payload) {
-        if (verboseState == Verbose.REPORT) {
-            // System.out.print("SENDPRINT");
-            if (payload.getType() == MPTransport.SYN) {
-                System.out.print("S");
-            } else if (payload.getType() == MPTransport.FIN) {
-                System.out.print("F");
-            } else if (payload.getType() == MPTransport.DATA) {
-                if (payload.getSeqNum() + payload.getPayload().length == dataBuffer.getSendMax()) {
-                    System.out.print(".");
-                } else if (payload.getSeqNum() + payload.getPayload().length < dataBuffer.getSendMax()) {
-                    System.out.print("!");
-                }
-            } else if (payload.getType() == MPTransport.ACK) {
-                // System.out.print("ERROR");
-                ; // this function does not log!
-            }
-        }
-
-    }
-
-    public void logReceive(MPTransport payload) {
-        if (verboseState == Verbose.REPORT) {
-            // System.out.print("RECEIVEPRINT");
-            if (payload.getType() == MPTransport.SYN) {
-                System.out.print("S");
-            } else if (payload.getType() == MPTransport.FIN) {
-                System.out.print("F");
-            } else if (payload.getType() == MPTransport.DATA) {
-                if (role == SENDER) {
-                    ;
-                } else if (role == RECEIVER) {
-                    if (payload.getSeqNum() == dataBuffer.getWrite()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("!");
-                    }
-
-                } else if (role == LISTENER) {
-
-                }
-
-            } else if (payload.getType() == MPTransport.ACK) {
-                if (role == SENDER) {
-                    if (payload.getSeqNum() == dataBuffer.getSendBase()) {
-                        System.out.print("?");
-                    } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("ERROR");
-                    }
-                } else if (role == RECEIVER) {
-                    if (payload.getSeqNum() == dataBuffer.getWrite()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("?");
-                    }
-
-                } else if (role == LISTENER) {
-
-                }
-
-            }
-        }
-    }
-
-    /* */
-    public int min(int a, int b, int c) {
-        return Math.min(a, (Math.min(b, c)));
-    }
-
-    public void run() {
-        while (true) {
-            // handle incoming data
-            Message mapping;
-            if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
-                logOutput("Processing Queue element!");
-                try {
-
-                    mapping = dataQ.poll(10, TimeUnit.MILLISECONDS);
-
-                    // update the dsn index
-                    int[] newDSN = new int[mapping.getSize()];
-                    for (int i = 0; i < mapping.getSize(); i++) {
-                        newDSN[i] = i + mapping.dsn;
-                    }
-                    dsnBuffer.write(newDSN, 0, mapping.getSize());
-
-                    // update the actual data
-                    dataBuffer.write(mapping.data, 0, mapping.getSize());
-                    logOutput("sending Data");
-                    sendData();
-
-                } catch (InterruptedException e) {
-                    ;
-                }
-            }
-
-            try {
-                receive();
-            } catch (SocketTimeoutException e) {
-                ;
-            } catch (Exception e) {
-                ;
-            }
-
-            // handle receieve
-        }
-    }
-
-    void receive() throws SocketTimeoutException, IOException {
-        byte[] receiveData = new byte[MAX_PACKET_SIZE];
-        DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
-        UDPSock.receive(incomingPacket);
-        byte[] incomingPayload = incomingPacket.getData();
-        // Integer incomingPort = incomingPacket.getPort();
-        // logOutput("found port:" + Integer.toString(incomingPort));
-        InetAddress incomingAddress = incomingPacket.getAddress();
-        MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
-        ConnID incomingcID = new ConnID(incomingAddress, incomingTransport.getSrcPort(), this.addr, incomingTransport.getDestPort());
-        handleReceive(incomingcID, incomingTransport);
-        return;
-    }
-
-    void refuse(ConnID cID) {
-        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
-                new byte[0]);
-        sendSegment(cID, finTransport);
-
-    }
-
-    // logging
-
-    public void logError(String output) {
-        log(output, System.err);
-    }
-
-    public void logOutput(String output) {
-        log(output, System.out);
-    }
-
-    public void log(String output, PrintStream stream) {
-        if (this.verboseState == Verbose.FULL) {
-            stream.println(this.addr + ": " + this.port + ":" + output);
-        } else if (this.verboseState == Verbose.REPORT) {
-            ;
-        } else {
-            ;
-        }
-    }
-
 }
-
-//
-
-// release: garbage collect the buffer
