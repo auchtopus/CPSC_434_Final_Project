@@ -147,6 +147,7 @@ public class MPSock extends TCPSock {
         return (TCPSendSock) estMap.get(cID);
     }
 
+
     TCPReceiveSock createEstSocket(ConnID cID) {
         ConnID reversecID = cID.reverse();
         if (estMap.containsKey(reversecID)) {
@@ -155,8 +156,8 @@ public class MPSock extends TCPSock {
             estMap.put(reversecID, null);
 
         }
-
         int lowestPort = this.port;
+
         DatagramSocket checkPort = null;
         while (true) {
             try {
@@ -237,11 +238,8 @@ public class MPSock extends TCPSock {
         return keyList.get(numMessages % dataQMap.size());
     }
 
-    public int read(byte[] buf, int pos, int len) {
-        return 0;
-    }
 
-    int readToQ() {
+    public int readToQ() {
         // create new mapping
         int mappingSize = Math.min(sendBuffer.getUnsent(), MPTransport.MAX_PAYLOAD_SIZE);
         byte[] mappingPayload = new byte[mappingSize];
@@ -313,6 +311,38 @@ public class MPSock extends TCPSock {
         return (listenMap.containsKey(portQuery));
     }
 
+
+
+
+ /**
+     * Read to the application up to len bytes from the message queues. The write function then breaks data written into packets to send on each subflow.
+     * pos.
+     *
+     * @param buf byte[] the buffer to write from
+     * @param pos int starting position in buffer
+     * @param len int number of bytes to write
+     * @return int on success, the number of bytes written, which may be smaller
+     *         than len; on failure, -1
+     */
+    public int read(byte[] buf, int pos, int len) {
+        // logOutput("===== Before write =====");
+        // buffer.getState();
+        // peek all the blocks in the dataQlist and compare with DSN expected
+        int expectedDseq = receiverBuffer.getWrite();
+        for (int i = 0; i < dataQList.size(); i++) {
+            BlockingQueue current = dataQList.get(i);
+            Message curMsgPeek = (Message) current.peek();
+            if (curMsgPeek.dsn == expectedDseq) { //in order write to buffer
+                Message curMsg = (Message) current.poll();
+                receiverBuffer.write(curMsg.data, 0, curMsg.length);
+            }
+        }
+        int bytesRead = receiverBuffer.read(buf, 0, len);
+        // logOutput("===== After write  =====");
+        // buffer.getState();
+        return bytesRead;
+    }
+
     // method to print detials about a socket
     public void socketStatus(){
         if (role == SENDER){
@@ -322,33 +352,3 @@ public class MPSock extends TCPSock {
         }
     }
 }
-
-/**
- * Read to the application up to len bytes from the message queues. The write
- * function then breaks data written into packets to send on each subflow.
- * pos.
- *
- * @param buf byte[] the buffer to write from
- * @param pos int starting position in buffer
- * @param len int number of bytes to write
- * @return int on success, the number of bytes written, which may be smaller
- *         than len; on failure, -1
- */
-// public int read(byte[] buf, int pos, int len) {
-// // logOutput("===== Before write =====");
-// // buffer.getState();
-// // peek all the blocks in the dataQlist and compare with DSN expected
-// Iterator iterator = dataQList.iterator();
-// Integer expectedDseq = this.buffer.getWrite();
-// while(iterator.hasNext()) {
-// ;
-// }
-// int bytesWrite = buffer.write(buf, pos, len);
-// if (bytesWrite == -1) {
-// return -1;
-// }
-// readToQ();
-// // logOutput("===== After write =====");
-// // buffer.getState();
-// return bytesWrite;
-// }
