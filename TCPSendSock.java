@@ -95,7 +95,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
         this.role = SENDER;
 
-        // TODO: configure timer
         return 0;
     }
 

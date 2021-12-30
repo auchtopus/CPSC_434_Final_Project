@@ -1,7 +1,9 @@
-import java.lang.*;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+
+import javax.sound.midi.Receiver;
+
 import java.net.*;
 import java.io.*;
 
@@ -45,7 +47,6 @@ public class MPSock extends TCPSock {
     // debug
     Verbose verboseState;
 
-    private byte[] buf;
 
     HashMap<ConnID, TCPSock> estMap = new HashMap<ConnID, TCPSock>();
     HashMap<Integer, TCPSock> listenMap = new HashMap<Integer, TCPSock>();
@@ -109,9 +110,11 @@ public class MPSock extends TCPSock {
             }
             Message acceptMsg = new Message(Message.Command.ACCEPT);
             logOutput("adding accept");
-            // listenSock.commandQ.offer(acceptMsg);
+            listenSock.commandQ.offer(acceptMsg);
             // assert listenSock.commandQ.peek() != null;
             // this needs to block!
+
+            receiverBuffer = new ReceiverByteBuffer(BUFFERSIZE);
         }
         return this; // return this MPSock as we only have one connection
     }
@@ -329,12 +332,18 @@ public class MPSock extends TCPSock {
         // buffer.getState();
         // peek all the blocks in the dataQlist and compare with DSN expected
         int expectedDseq = receiverBuffer.getWrite();
-        for (int i = 0; i < dataQList.size(); i++) {
-            BlockingQueue current = dataQList.get(i);
-            Message curMsgPeek = (Message) current.peek();
-            if (curMsgPeek.dsn == expectedDseq) { //in order write to buffer
-                Message curMsg = (Message) current.poll();
-                receiverBuffer.write(curMsg.data, 0, curMsg.length);
+        ArrayList<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
+        boolean polled = true;
+        while (polled){
+            polled = false;
+            for (ConnID cID: keyList) {
+                BlockingQueue<Message> current = dataQMap.get(cID);
+                Message curMsgPeek = (Message) current.peek();
+                if (curMsgPeek.dsn == expectedDseq) { //in order write to buffer
+                    Message curMsg = (Message) current.poll();
+                    receiverBuffer.write(curMsg.data, 0, curMsg.length);
+                    polled = true;
+                }
             }
         }
         int bytesRead = receiverBuffer.read(buf, 0, len);
