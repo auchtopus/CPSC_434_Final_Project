@@ -1,6 +1,6 @@
 import java.util.concurrent.atomic.*;
 
-public class SenderByteBuffer{
+public class SenderByteBuffer extends Buffer{
     byte[] buffer;
     AtomicInteger sendBase;
     int sendMax; // write head; also the nextseqnum
@@ -90,7 +90,7 @@ public class SenderByteBuffer{
     }
 
     public synchronized int acknowledge(int newSendBase){
-        if (newSendBase > sendMax){
+        if (newSendBase > sendMax || newSendBase < this.sendBase.get()){
             return -1;
         }
         AtomicInteger oldSendBase = this.sendBase;
