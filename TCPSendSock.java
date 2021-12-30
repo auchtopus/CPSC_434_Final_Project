@@ -7,33 +7,11 @@ import java.io.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * <p>
- * Title: CPSC 433/533 Programming Assignment
- * </p>
- *
- * <p>
- * Description: Fishnet socket implementation
- * </p>
- *
- * <p>
- * Copyright: Copyright (c) 2006
- * </p>
- *
- * <p>
- * Company: Yale University
- * </p>
- *
- * @author Hao Wang
- * @version 1.0
- */
-
 public class TCPSendSock extends TCPSock implements Runnable {
 
     /* Send sock only */
     SenderByteBuffer dataBuffer;
     SenderIntBuffer dsnBuffer;
-
     /*
      * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
      */
@@ -42,13 +20,16 @@ public class TCPSendSock extends TCPSock implements Runnable {
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.port = this.mpSock.getPort();
+        this.role = SENDER;
     }
 
     public TCPSendSock(MPSock mpSock, BlockingQueue<Message> dataQ) {
+        super();
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.port = this.mpSock.getPort();
         this.dataQ = dataQ;
+        this.role = SENDER;
     }
 
     public void run() {

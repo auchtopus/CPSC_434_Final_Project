@@ -30,15 +30,15 @@ public class MPSock extends TCPSock {
     final int SENDER = 0;
     final int EVER = 1;
 
-    private State state;
     int timeout = 1000;
     final int BUFFERSIZE = 1000;
     Date timeService = new Date();
     long timeSent;
     int numMessages = 0;
+
     // MPTCP
-    List<BlockingQueue<Message>> dataQList;
-    List<BlockingQueue<Message>> commandQList;
+    Hashtable<ConnID, BlockingQueue<Message>> dataQMap;
+    Hashtable<ConnID, BlockingQueue<Message>> commandQMap;
     SenderByteBuffer sendBuffer;
     ReceiverByteBuffer receiverBuffer;
 
@@ -54,8 +54,8 @@ public class MPSock extends TCPSock {
     public MPSock(InetAddress addr, int port) {
         this.addr = addr; // fishnet version
         this.port = port;
-        dataQList = new ArrayList<BlockingQueue<Message>>();
-        commandQList = new ArrayList<BlockingQueue<Message>>();
+        dataQMap = new Hashtable<ConnID, BlockingQueue<Message>>();
+        commandQMap = new Hashtable<ConnID, BlockingQueue<Message>>();
         verboseState = Verbose.FULL;
 
         // keep hashmap of port -> socket and track the state
@@ -78,12 +78,13 @@ public class MPSock extends TCPSock {
    
     // Establish a MPTCP connection
     public int connect(InetAddress destAddr, int destPort) {
-        ConnID cID = new ConnID(this.addr, this.port, destAddr, destPort);
+        // this is the declared "virtual" cID -- the actual send ports on both sides are not this
+        ConnID cID = new ConnID(this.addr, this.port, destAddr, destPort); 
         this.state = State.SYN_SENT;
         sendBuffer = new SenderByteBuffer(BUFFERSIZE);
         // establish a send socket
         BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
-        dataQList.add(dataQ);
+        dataQMap.put(cID, dataQ);
         TCPSendSock sendSock = new TCPSendSock(this, dataQ);
         sendSock.setCID(cID);
         logOutput("calling sendsock connect");
@@ -91,7 +92,10 @@ public class MPSock extends TCPSock {
         Runnable sendSockRunnable = (Runnable) sendSock;
         Thread sendSockThread = new Thread(sendSockRunnable);
         sendSockThread.start();
-        this.role = SENDER;
+        this.state = State.SYN_SENT;
+
+        // configure the state for opened connections
+        
         // send SYN with MP_CAPABLE
         return 0;
     }
@@ -113,8 +117,7 @@ public class MPSock extends TCPSock {
     }
 
     int addSubflow(InetAddress destAddr, int destPort) {
-        TCPSendSock sendSock = new TCPSendSock(this);
-        sendSock.connect(destAddr, destPort); // initiate subflow connection
+        connect(destAddr, destPort); // initiate subflow connection
         return 0;
     }
 
@@ -170,8 +173,8 @@ public class MPSock extends TCPSock {
         logOutput("Calling createEstSocket" + ": " + newcID.toString());
         BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
         BlockingQueue<Message> commandQ = new LinkedBlockingQueue<Message>();
-        this.dataQList.add(dataQ);
-        this.commandQList.add(commandQ);
+        this.dataQMap.put(newcID, dataQ);
+        this.commandQMap.put(newcID, commandQ);
         TCPReceiveSock newSock = new TCPReceiveSock(this, newcID.srcAddr, newcID.srcPort, dataQ, commandQ);
         newSock.setCID(newcID);
         estMap.put(newcID, newSock);
@@ -227,9 +230,11 @@ public class MPSock extends TCPSock {
     /*
      * moves data into queue
      */
-    int computeFairness() {
+    ConnID computeFairness() {
+        // return the cID to handle the next mapping
         numMessages++;
-        return numMessages % dataQList.size();
+        List<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
+        return keyList.get(numMessages % dataQMap.size());
     }
 
     public int read(byte[] buf, int pos, int len) {
@@ -245,7 +250,7 @@ public class MPSock extends TCPSock {
         Message mapping = new Message(mappingPayload, dsn, mappingSize);
 
         // assign mapping
-        dataQList.get(computeFairness()).add(mapping);
+        dataQMap.get(computeFairness()).add(mapping);
 
         return mappingSize;
     }

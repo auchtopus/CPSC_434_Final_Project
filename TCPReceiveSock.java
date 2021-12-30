@@ -61,7 +61,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                 Message.Command command = commandQ.poll().getCommand();
 
                 switch (command) {
-                    case ACCEPT:
+                case ACCEPT:
                         this.accept();
                         break;
                     case CLOSE:
@@ -226,11 +226,13 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         printcID(cID);
         socketStatus();
         logOutput("==========================");
-        if (payload.getType() == MPTransport.SYN && payload.getMpType() == MPTransport.MP_CAPABLE) { // incoming MPTCP
-                                                                                                     // Connection
+        if (payload.getType() == MPTransport.SYN && payload.getMpType() == MPTransport.MP_CAPABLE && this.role == LISTENER) { 
+            // only for creating a new MPTCP connection, so this is only used by the original listenersocket
+            logOutput("hello!");
             mpSock.handleNewConn(payload);
             receiveHandshakeMPSock(cID, payload);
         } else if (getState() == State.LISTEN) {
+            logOutput("hello2!");
             if (this.receiveHandshakeListener(cID, payload) == -1) {
                 refuse();
             }

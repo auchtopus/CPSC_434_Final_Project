@@ -152,6 +152,8 @@ public abstract class TCPSock {
 
     /* Socket Functions */
     void receive() throws SocketTimeoutException, IOException {
+
+        // parse the incoming packet
         byte[] receiveData = new byte[MAX_PACKET_SIZE];
         DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
         UDPSock.receive(incomingPacket);
@@ -161,6 +163,8 @@ public abstract class TCPSock {
         MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
         ConnID incomingcID = new ConnID(incomingAddress, incomingTransport.getSrcPort(), this.addr,
                 incomingTransport.getDestPort());
+
+        // process it
         handleReceive(incomingcID, incomingTransport);
         return;
     }
