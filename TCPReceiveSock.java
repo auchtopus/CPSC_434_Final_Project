@@ -4,26 +4,6 @@ import java.net.*;
 import java.io.*;
 import java.util.concurrent.BlockingQueue;
 
-/**
- * <p>
- * Title: CPSC 433/533 Programming Assignment
- * </p>
- *
- * <p>
- * Description: Fishnet socket implementation
- * </p>
- *
- * <p>
- * Copyright: Copyright (c) 2006
- * </p>
- *
- * <p>
- * Company: Yale University
- * </p>
- *
- * @author Hao Wang
- * @version 1.0
- */
 
 public class TCPReceiveSock extends TCPSock implements Runnable {
 
@@ -234,7 +214,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         } else if (getState() == State.LISTEN) {
             logOutput("hello2!");
             if (this.receiveHandshakeListener(cID, payload) == -1) {
-                refuse();
+                refuse(cID.reverse());
             }
         } else if (getState() == State.ESTABLISHED || getState() == State.SHUTDOWN) {
             switch (payload.getType()) {
@@ -320,7 +300,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     /* release immediately (abortive shutdown) */
     public void release() {
-        refuse();
+        refuse(this.cID);
         state = State.FIN_SENT;
 
     }

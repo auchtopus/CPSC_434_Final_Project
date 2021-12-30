@@ -270,25 +270,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
                     }
                     break;
-                case MPTransport.DATA: // we are receiver and getting a data
-                    if (this.role != RECEIVER) {
-                        refuse();
-                    } else {
-                        if (dataBuffer.getWrite() != payload.getSeqNum()) { // receieve a bad packet
-                            logOutput("out of sequence!! " + dataBuffer.getWrite() + " " + payload.getSeqNum());
-                            sendAck(false);
-                        } else { // receieve a good packet
-                            byte[] payloadBuffer = payload.getPayload();
-                            int bytesRead = dataBuffer.write(payloadBuffer, 0, payloadBuffer.length);
-                            if (bytesRead != payloadBuffer.length) {
-                                logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
-
-                            } else {
-                                sendAck(true);
-                            }
-                        }
-                    }
-                    break;
 
                 case MPTransport.FIN: // someone told us to terminate
 
@@ -339,7 +320,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     /* releasse immediately (abortive shutdown) */
     public void release() {
-        refuse();
+        refuse(cID);
         state = State.FIN_SENT;
 
     }

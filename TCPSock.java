@@ -231,19 +231,12 @@ public abstract class TCPSock {
 
     public abstract void close();
 
-    public void refuse() {
-        logOutput("refusing!");
+    public void refuse(ConnID cID) {
+        logOutput("refusing! connection");
         MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
                 new byte[0]);
         sendSegment(cID, finTransport); // here
         return;
-    }
-
-    public void refuse(ConnID cID) {
-        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
-                new byte[0]);
-        sendSegment(cID, finTransport);
-
     }
 
     /* Logging */
