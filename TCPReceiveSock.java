@@ -219,7 +219,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         } else if (getState() == State.ESTABLISHED || getState() == State.SHUTDOWN) {
             switch (payload.getType()) {
                 case MPTransport.DATA: // we are receiver and getting a data
-
                     if (dataBuffer.getWrite() != payload.getSeqNum()) { // receieve a bad packet
                         logOutput("out of sequence!! " + dataBuffer.getWrite() + " " + payload.getSeqNum());
                         sendAck(false);
