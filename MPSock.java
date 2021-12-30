@@ -109,8 +109,8 @@ public class MPSock extends TCPSock {
             }
             Message acceptMsg = new Message(Message.Command.ACCEPT);
             logOutput("adding accept");
-            listenSock.commandQ.offer(acceptMsg);
-            assert listenSock.commandQ.peek() != null;
+            // listenSock.commandQ.offer(acceptMsg);
+            // assert listenSock.commandQ.peek() != null;
             // this needs to block!
         }
         return this; // return this MPSock as we only have one connection
@@ -181,7 +181,7 @@ public class MPSock extends TCPSock {
         newSock.bind(newcID.srcPort);
         newSock.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
         newSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
-        newSock.setSocketTimeout(20);
+        newSock.setSocketTimeout(5);
         assert (estMap.containsKey(cID));
 
         // run the new sock as a separate thread

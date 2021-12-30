@@ -38,26 +38,22 @@ public class TCPSendSock extends TCPSock implements Runnable {
             // handle incoming data
             Message mapping;
             if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
-                logOutput("Processing Queue element!");
-                try {
+                
+                mapping = dataQ.poll();
+                logOutput("dQ.poll:" + mapping.getSize());
 
-                    mapping = dataQ.poll(10, TimeUnit.MILLISECONDS);
-
-                    // update the dsn index
-                    int[] newDSN = new int[mapping.getSize()];
-                    for (int i = 0; i < mapping.getSize(); i++) {
-                        newDSN[i] = i + mapping.dsn;
-                    }
-                    dsnBuffer.write(newDSN, 0, mapping.getSize());
-
-                    // update the actual data
-                    dataBuffer.write(mapping.data, 0, mapping.getSize());
-                    logOutput("sending Data");
-                    sendData();
-
-                } catch (InterruptedException e) {
-                    ;
+                // update the dsn index
+                int[] newDSN = new int[mapping.getSize()];
+                for (int i = 0; i < mapping.getSize(); i++) {
+                    newDSN[i] = i + mapping.dsn;
                 }
+                dsnBuffer.write(newDSN, 0, mapping.getSize());
+
+                // update the actual data
+                dataBuffer.write(mapping.data, 0, mapping.getSize());
+                logOutput("sending Data");
+                sendData();
+
             }
 
             try {
@@ -248,9 +244,10 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
                         // update dack
                         int dack = payload.getDSeqNum();
-                        if (mpSock.sendBuffer.acknowledge(dack) < 0){
+                        if (mpSock.sendBuffer.acknowledge(dack) < 0) {
                             // dacks behave cumulatively
-                            // upon bad dack: should be able to rely on the fast-retransmission of the underlying TCPSock to manage this
+                            // upon bad dack: should be able to rely on the fast-retransmission of the
+                            // underlying TCPSock to manage this
                         }
                         sendData();
                     } else if (ackNum == dataBuffer.getSendBase()) {
@@ -467,7 +464,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     int getPayloadSize() {
         logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
-                + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
+                + "|window:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
         return Math.max(0, min(MAX_PAYLOAD_SIZE,
                 dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
