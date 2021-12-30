@@ -197,25 +197,15 @@ public abstract class TCPSock {
             ;
         }
 
+        
+        logOutput("===============================");
         return true;
-
-        // logOutput("===============================");
         // logSender(payload);
 
     }
 
     void handleReceive(ConnID cID, MPTransport payload){};
 
-    int bindListen(int localPort) {
-        if (!mpSock.checkPort(localPort)) {
-            this.port = localPort;
-            this.state = State.CLOSED;
-            return 0;
-        } else {
-            return -1;
-        }
-
-    }
 
     void removeEstSocket(ConnID cID) {
     }
@@ -242,8 +232,8 @@ public abstract class TCPSock {
     /* Logging */
 
     void printTransport(MPTransport t) {
-        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|wsize:" + t.getWindow() + "|psize:"
-                + t.getPayload().length);
+        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|dsn:" + t.getDSeqNum() + "|wsize:" + t.getWindow() + "|psize:"
+                + t.getPayload().length + "|map:" + t.getLenMapping());
     }
 
     void printcID(ConnID cID) {

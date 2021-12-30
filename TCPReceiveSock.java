@@ -34,7 +34,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     }
 
     public void run() { // shared by listen socket and establish sockets
+        socketStatus();
         while (true) {
+            socketStatus();
             if (commandQ.peek() != null) { //
                 // process commands
                 Message.Command command = commandQ.poll().getCommand();
@@ -48,6 +50,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                 }
             }
             try {
+                socketStatus();
                 receive();
             } catch (SocketTimeoutException e) {
                 continue;
@@ -126,13 +129,13 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         logOutput("received handshake:" + cID.toString());
         // use the next avail port
         // port tracking
-        TCPReceiveSock newEstSock = mpSock.createEstSocket(cID); // here set hardcoded ports
+        TCPReceiveSock newEstSock = mpSock.createEstSocket(cID); 
         if (newEstSock == null) {
             return 0;
         }
 
         this.backlogSize += 1;
-        this.backlog.add(newEstSock);
+        // this.backlog.add(newEstSock);
         MPTransport ackTransport = new MPTransport(newEstSock.getPort(), cID.srcPort, MPTransport.ACK,
                 MPTransport.MP_JOIN,
                 newEstSock.dataBuffer.getAvail(),
@@ -249,10 +252,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
                     break;
 
-                case MPTransport.FIN: // someone told us to terminate
+                case MPTransport.FIN: 
 
                     receiveFin(payload);
-
+                    logOutput("FIN CLOSE");
                     this.close();
                     break;
                 case MPTransport.SYN:
@@ -318,6 +321,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     }
 
     public void completeTeardownRT() { // complete teardown
+        logOutput("teardown?!");
         state = State.CLOSED;
         if (role == RECEIVER) {
             mpSock.removeReceiver(cID);

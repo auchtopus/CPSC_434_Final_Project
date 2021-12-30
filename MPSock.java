@@ -181,11 +181,12 @@ public class MPSock extends TCPSock {
         this.commandQMap.put(newcID, commandQ);
         TCPReceiveSock newSock = new TCPReceiveSock(this, newcID.srcAddr, newcID.srcPort, dataQ, commandQ);
         newSock.setCID(newcID);
+        newSock.setState(State.ESTABLISHED);
         estMap.put(newcID, newSock);
-        newSock.bind(newcID.srcPort);
         newSock.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
         newSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
         newSock.setSocketTimeout(5);
+        newSock.socketStatus();
         assert (estMap.containsKey(cID));
 
         // run the new sock as a separate thread
@@ -247,8 +248,9 @@ public class MPSock extends TCPSock {
         int mappingSize = Math.min(sendBuffer.getUnsent(), MPTransport.MAX_PAYLOAD_SIZE);
         byte[] mappingPayload = new byte[mappingSize];
         int dsn = sendBuffer.getSendMax();
-        sendBuffer.read(mappingPayload, 0, mappingSize);
+        int dataRead = sendBuffer.read(mappingPayload, 0, mappingSize);
         Message mapping = new Message(mappingPayload, dsn, mappingSize);
+        // logOutput("map:dsn:" + dsn + "|declared size:"  + mappingSize + "|actual size:" + dataRead);
 
         // assign mapping
         dataQMap.get(computeFairness()).add(mapping);
@@ -258,7 +260,7 @@ public class MPSock extends TCPSock {
 
     /* Connection Closure */
 
-    public void close() {
+    public void  close() {
         // close all established TCPSock
         for (TCPSock sock : estMap.values()) {
             sock.close();

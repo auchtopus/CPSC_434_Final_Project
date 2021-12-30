@@ -37,22 +37,28 @@ public class TCPSendSock extends TCPSock implements Runnable {
         while (true) {
             // handle incoming data
             Message mapping;
+
             if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
-                
+
                 mapping = dataQ.poll();
+                int dataWrote = 0;
                 logOutput("dQ.poll:" + mapping.getSize());
+                while (dataWrote < mapping.getSize()){
 
-                // update the dsn index
-                int[] newDSN = new int[mapping.getSize()];
-                for (int i = 0; i < mapping.getSize(); i++) {
-                    newDSN[i] = i + mapping.dsn;
+                    // write to dsnBuffer
+                    int[] newDSN = new int[mapping.getSize()];
+                    for (int i = dataWrote; i < mapping.getSize(); i++) {
+                        newDSN[i] = i + mapping.dsn;
+                    }
+                    dsnBuffer.write(newDSN, 0, mapping.getSize());
+    
+                    // update the actual data
+                    int wrote = dataBuffer.write(mapping.data, 0, mapping.getSize());
+                    dataWrote += wrote;
+                    // by sending data here, we essentially "block" so that dataBuffer stores a full mapping, then flush, then another mapping
+                    sendData();
                 }
-                dsnBuffer.write(newDSN, 0, mapping.getSize());
-
-                // update the actual data
-                dataBuffer.write(mapping.data, 0, mapping.getSize());
-                logOutput("sending Data");
-                sendData();
+                // update the dsn index
 
             }
 
@@ -174,15 +180,24 @@ public class TCPSendSock extends TCPSock implements Runnable {
     /* Transmission */
 
     void sendData() {
-        int newPayloadSize = getPayloadSize();
+        int newPayloadSize = getPayloadSize(); // only a getter, no contract!
 
         while (newPayloadSize > 0) {
-            // read through the databuffer index looking for incongruity
+            // TODO: use the dsnBuffer!
+
+            
             int mapping = 0;
             // prepare the byte buffer
+
+            int[] payloadDsnBuffer = new int[newPayloadSize];
+            int dsn = dsnBuffer.getSendMax();
+            int dsnWritten = dsnBuffer.read(payloadDsnBuffer, 0, newPayloadSize);
+
             byte[] payloadBuffer = new byte[newPayloadSize];
-            int dataAck = dataBuffer.getSendMax();
+            int seq = dataBuffer.getSendMax();
             int payloadWritten = dataBuffer.read(payloadBuffer, 0, newPayloadSize);
+
+            // error check
             if (payloadWritten != newPayloadSize) {
                 logError("Write failure: payloadWritten: " + payloadWritten + " payloadSize" + newPayloadSize);
             }
@@ -192,8 +207,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
             }
 
             // retransmission
-            MPTransport dataTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.DATA, 0, 0, dataAck,
-                    DSEQ, mapping,
+            MPTransport dataTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.DATA, 0, 0, seq,
+                    dsn, mapping,
                     payloadBuffer); // CHANGE mapping flag based on len
 
             // add to the queue once
@@ -231,6 +246,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
                         // update sendbase
                         ackCounter = 0;
                         int oldSendBase = dataBuffer.acknowledge(ackNum);
+                        dsnBuffer.acknowledge(ackNum);
                         logOutput("old sendBase: " + oldSendBase + " acknum: " + ackNum);
                         if (oldSendBase == -1) {
                             logError(
@@ -462,8 +478,9 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
     int getPayloadSize() {
-        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
-                + "|window:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
+        // logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
+        //         + "|window:"
+        //         + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
         return Math.max(0, min(MAX_PAYLOAD_SIZE,
                 dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
@@ -472,6 +489,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
     void fastRetransmit() {
         // we can assume that everything in the air has been lost?
         dataBuffer.reset();
+        dsnBuffer.reset();
         sendData();
     }
 
@@ -495,48 +513,47 @@ public class TCPSendSock extends TCPSock implements Runnable {
      * @return int on success, the number of bytes written, which may be smaller
      *         than len; on failure, -1
      */
-    public int write(byte[] buf, int pos, int len) {
-        logOutput("===== Before write =====");
-        // dataBuffer.getState();
-        int bytesWrite = dataBuffer.write(buf, pos, len);
-        if (bytesWrite == -1) {
-            return -1;
-        }
-        sendData();
-        logOutput("===== After write  =====");
-        // dataBuffer.getState();
-        return bytesWrite;
-    }
+    // todo: determine if anybody even calls
+    // public int write(byte[] buf, int pos, int len) {
+    //     logOutput("===== Before write =====");
+    //     int bytesWrite = dataBuffer.write(buf, pos, len);
+    //     if (bytesWrite == -1) {
+    //         return -1;
+    //     }
+    //     sendData();
+    //     logOutput("===== After write  =====");
+    //     return bytesWrite;
+    // }
 
-    /**
-     * Read from the socket up to len bytes into the buffer buf starting at position
-     * pos.
-     *
-     * @param buf byte[] the buffer
-     * @param pos int starting position in buffer
-     * @param len int number of bytes to read
-     * @return int on success, the number of bytes read, which may be smaller than
-     *         len; on failure, -1
-     */
-    public int read(byte[] buf, int pos, int len) {
-        boolean sendUpdate = false;
-        if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
-            // buffer out of space
-            sendUpdate = true;
+    // /**
+    //  * Read from the socket up to len bytes into the buffer buf starting at position
+    //  * pos.
+    //  *
+    //  * @param buf byte[] the buffer
+    //  * @param pos int starting position in buffer
+    //  * @param len int number of bytes to read
+    //  * @return int on success, the number of bytes read, which may be smaller than
+    //  *         len; on failure, -1
+    //  */
+    // public int read(byte[] buf, int pos, int len) {
+    //     boolean sendUpdate = false;
+    //     if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
+    //         // buffer out of space
+    //         sendUpdate = true;
 
-        }
+    //     }
 
-        if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
-            logOutput("Receiver buffer cleared, no more data incoming");
-            state = State.CLOSED;
-            return 0;
-        }
-        logOutput("===== Before read  =====");
-        int bytesRead = dataBuffer.read(buf, pos, len);
-        logOutput("===== After read   =====");
+    //     if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
+    //         logOutput("Receiver buffer cleared, no more data incoming");
+    //         state = State.CLOSED;
+    //         return 0;
+    //     }
+    //     logOutput("===== Before read  =====");
+    //     int bytesRead = dataBuffer.read(buf, pos, len);
+    //     logOutput("===== After read   =====");
 
-        return bytesRead;
-    }
+    //     return bytesRead;
+    // }
 
     public void socketStatus() {
         try {

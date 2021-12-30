@@ -1,3 +1,4 @@
+
 import java.net.InetAddress;
 
 public class Server {
@@ -40,6 +41,7 @@ public class Server {
             }
 
         }
+        System.out.println("this close!");
         mpSock.close();
     }
 
