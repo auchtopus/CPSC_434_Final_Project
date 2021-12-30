@@ -376,16 +376,16 @@ public class MPSock extends TCPSock{
         // buffer.getState();
         // peek all the blocks in the dataQlist and compare with DSN expected
         Iterator iterator = dataQList.iterator();
-        Integer expectedDseq = this.buffer.getWrite();
+        Integer expectedDseq = receiverBuffer.getWrite();
         while(iterator.hasNext()) {
-            ;
+            BlockingQueue current = iterator.next();
+            if (current.peek().dsn == expectedDseq) { //in order write to buffer
+                Message curMsg = current.poll();
+                receiverBuffer.write(curMsg.data, 0, curMsg.len);
+            }
         }
-        int bytesWrite = buffer.write(buf, pos, len);
-        if (bytesWrite == -1) {
-            return -1;
-        }
-        readToQ(); 
+        int bytesRead = receiverBuffer.read(buf, 0, len);
         // logOutput("===== After write  =====");
         // buffer.getState();
-        return bytesWrite;
+        return bytesRead;
     }
