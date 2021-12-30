@@ -4,7 +4,6 @@ import java.net.*;
 import java.io.*;
 import java.util.concurrent.BlockingQueue;
 
-
 /**
  * <p>
  * Title: CPSC 433/533 Programming Assignment
@@ -81,7 +80,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
         }
     }
-
 
     /* Connection Startup */
 
@@ -218,7 +216,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             e.printStackTrace();
         }
     }
-  
+
     /* Transmission */
 
     void handleReceive(ConnID cID, MPTransport payload) {
@@ -239,39 +237,36 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         } else if (getState() == State.ESTABLISHED || getState() == State.SHUTDOWN) {
             switch (payload.getType()) {
                 case MPTransport.DATA: // we are receiver and getting a data
-                    if (this.role != RECEIVER) {
-                        refuse();
-                    } else {
-                        if (dataBuffer.getWrite() != payload.getSeqNum()) { // receieve a bad packet
-                            logOutput("out of sequence!! " + dataBuffer.getWrite() + " " + payload.getSeqNum());
-                            sendAck(false);
-                        } else { // receieve a good packet
-                            byte[] payloadBuffer = payload.getPayload();
-                            int bytesRead = dataBuffer.write(payloadBuffer, 0, payloadBuffer.length);
-                            if (bytesRead != payloadBuffer.length) {
-                                logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
 
-                            } else {
-                                // want to check whether the mapping is complete to send to dataQ for MP Sock
-                                int[] newDSN = new int[bytesRead];
-                                for (int i = 0; i < bytesRead; i++) {
-                                    newDSN[i] = i + payload.getDSeqNum();
-                                }
-                                dsnBuffer.write(newDSN, 0, bytesRead);
-                                if (payload.getLenMapping() != 0) { // len present, final bit in mapping
-                                    Integer len = dataBuffer.getWrite() - dataBuffer.getRead();
-                                    byte[] messagePayload = new byte[len];
-                                    int[] dumpPayload = new int[len];
-                                    dataBuffer.read(messagePayload, 0, len);
-                                    dsnBuffer.read(dumpPayload, 0, len);
-                                    // send message to BlockingQ
-                                    Message mapping = new Message(messagePayload, newDSN[bytesRead - 1] - len, len);
-                                    this.dataQ.offer(mapping);
-                                }
-                                sendAck(true);
+                    if (dataBuffer.getWrite() != payload.getSeqNum()) { // receieve a bad packet
+                        logOutput("out of sequence!! " + dataBuffer.getWrite() + " " + payload.getSeqNum());
+                        sendAck(false);
+                    } else { // receieve a good packet on subflow acks
+                        byte[] payloadBuffer = payload.getPayload();
+                        int bytesRead = dataBuffer.write(payloadBuffer, 0, payloadBuffer.length);
+                        if (bytesRead != payloadBuffer.length) {
+                            logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
+                        } else {
+                            // want to check whether the mapping is complete to send to dataQ for MP Sock
+                            int[] newDSN = new int[bytesRead];
+                            for (int i = 0; i < bytesRead; i++) {
+                                newDSN[i] = i + payload.getDSeqNum();
                             }
+                            dsnBuffer.write(newDSN, 0, bytesRead);
+                            if (payload.getLenMapping() != 0) { // len present, final bit in mapping
+                                Integer len = dataBuffer.getWrite() - dataBuffer.getRead();
+                                byte[] messagePayload = new byte[len];
+                                int[] dumpPayload = new int[len];
+                                dataBuffer.read(messagePayload, 0, len);
+                                dsnBuffer.read(dumpPayload, 0, len);
+                                // send message to BlockingQ
+                                Message mapping = new Message(messagePayload, newDSN[bytesRead - 1] - len, len);
+                                this.dataQ.offer(mapping);
+                            }
+                            sendAck(true);
                         }
                     }
+
                     break;
 
                 case MPTransport.FIN: // someone told us to terminate

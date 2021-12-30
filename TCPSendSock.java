@@ -198,9 +198,10 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     void sendData() {
         int newPayloadSize = getPayloadSize();
+
         while (newPayloadSize > 0) {
             // read through the databuffer index looking for incongruity
-
+            int mapping = 0;
             // prepare the byte buffer
             byte[] payloadBuffer = new byte[newPayloadSize];
             int dataAck = dataBuffer.getSendMax();
@@ -209,9 +210,13 @@ public class TCPSendSock extends TCPSock implements Runnable {
                 logError("Write failure: payloadWritten: " + payloadWritten + " payloadSize" + newPayloadSize);
             }
 
+            if(dataBuffer.getUnsent() == 0){
+                mapping = payloadWritten;
+            }
+
             // retransmission
             MPTransport dataTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.DATA, 0, 0, dataAck,
-                    DSEQ, 0,
+                    DSEQ, mapping,
                     payloadBuffer); // CHANGE mapping flag based on len
 
             // add to the queue once
@@ -470,7 +475,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
     void updateLoss() {
-        // System.out.println("LOSS EVENT");
         renoLoss();
 
         if (useCubic && !cubicInit) {
@@ -492,7 +496,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
     int getPayloadSize() {
         logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
                 + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
-        return Math.max(0, min(MAX_PAYLOAD_SIZE, dataBuffer.getUnsent(),
+        return Math.max(0, min(MAX_PAYLOAD_SIZE, 
+        dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
     }
 
