@@ -314,11 +314,6 @@ public class MPSock extends TCPSock{
         return numMessages % dataQList.size();
     }
 
-    public int read(byte[] buf, int pos, int len){
-        return 0;
-    }
-
-
     public int readToQ() {
         // create new mapping
         int mappingSize = Math.min(sendBuffer.getUnsent(), MPTransport.MAX_PAYLOAD_SIZE);
@@ -359,7 +354,7 @@ public class MPSock extends TCPSock{
     }
 
 
-}
+
 
  /**
      * Read to the application up to len bytes from the message queues. The write function then breaks data written into packets to send on each subflow.
@@ -375,13 +370,13 @@ public class MPSock extends TCPSock{
         // logOutput("===== Before write =====");
         // buffer.getState();
         // peek all the blocks in the dataQlist and compare with DSN expected
-        Iterator iterator = dataQList.iterator();
-        Integer expectedDseq = receiverBuffer.getWrite();
-        while(iterator.hasNext()) {
-            BlockingQueue current = iterator.next();
-            if (current.peek().dsn == expectedDseq) { //in order write to buffer
-                Message curMsg = current.poll();
-                receiverBuffer.write(curMsg.data, 0, curMsg.len);
+        int expectedDseq = receiverBuffer.getWrite();
+        for (int i = 0; i < dataQList.size(); i++) {
+            BlockingQueue current = dataQList.get(i);
+            Message curMsgPeek = (Message) current.peek();
+            if (curMsgPeek.dsn == expectedDseq) { //in order write to buffer
+                Message curMsg = (Message) current.poll();
+                receiverBuffer.write(curMsg.data, 0, curMsg.length);
             }
         }
         int bytesRead = receiverBuffer.read(buf, 0, len);
@@ -389,3 +384,4 @@ public class MPSock extends TCPSock{
         // buffer.getState();
         return bytesRead;
     }
+}

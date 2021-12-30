@@ -164,21 +164,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                 ;
             }
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-         
-=======
-            byte[] incomingPayload = p.getData();
-            int incomingPort = p.getPort();
-            InetAddress incomingAddress = p.getAddress();
-            MPTransport incomingPacket = MPTransport.unpack(incomingPayload);
-
-            // build CiD
-            ConnID incomingTuple = new ConnID(this.addr, incomingPacket.getDestPort(), incomingAddress, incomingPort);
-            this.handleReceive(incomingTuple, incomingPacket);
->>>>>>> 854e2d4 (Receiver side bringing over changes)
->>>>>>> 46c8113 (Receiver side bringing over changes)
         }
     }
 
