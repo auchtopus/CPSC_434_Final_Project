@@ -90,7 +90,7 @@ public class SenderByteBuffer extends Buffer{
     }
 
     public synchronized int acknowledge(int newSendBase){
-        if (newSendBase > sendMax){
+        if (newSendBase > sendMax || newSendBase < this.sendBase.get()){
             return -1;
         }
         AtomicInteger oldSendBase = this.sendBase;

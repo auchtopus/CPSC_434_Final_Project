@@ -12,6 +12,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
     /* Send sock only */
     SenderByteBuffer dataBuffer;
     SenderIntBuffer dsnBuffer;
+
     /*
      * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
      */
@@ -191,7 +192,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
                 logError("Write failure: payloadWritten: " + payloadWritten + " payloadSize" + newPayloadSize);
             }
 
-            if(dataBuffer.getUnsent() == 0){
+            if (dataBuffer.getUnsent() == 0) {
                 mapping = payloadWritten;
             }
 
@@ -223,52 +224,50 @@ public class TCPSendSock extends TCPSock implements Runnable {
             switch (payload.getType()) {
                 case MPTransport.ACK: // we are sender and getting an ack
 
-                    if (this.role == RECEIVER) {
-                        logOutput("this should not happen?");
-                        // refuse();
-                    } else {
-                        int ackNum = payload.getSeqNum();
-                        sampleRTT = getRTT(ackNum);
-                        if (ackNum > dataBuffer.getSendBase()) {
-                            // extract this code
-                            if (ackNum == lastTransport.getSeqNum() + lastTransport.getPayload().length) {
-                                logOutput("SAMPLE! acknum" + ackNum + " targetseqnum:" + lastTransport.getSeqNum()
-                                        + "sendBase" + dataBuffer.getSendBase() + "len"
-                                        + lastTransport.getPayload().length);
+                    int ackNum = payload.getSeqNum();
+                    sampleRTT = getRTT(ackNum);
+                    if (ackNum > dataBuffer.getSendBase()) {
 
-                                estRTT = (long) (0.875 * estRTT + 0.125 * sampleRTT);
-                                devRTT = (long) (0.75 * devRTT + 0.25 * Math.abs(sampleRTT - estRTT));
-                                timeout = (int) (estRTT + 4 * devRTT);
-                                logOutput("new Timeout:" + timeout);
-                            }
-                            ackCounter = 0;
-                            int oldSendBase = dataBuffer.acknowledge(ackNum);
-                            logOutput("old sendBase: " + oldSendBase + " acknum: " + ackNum);
-
-                            if (oldSendBase == -1) {
-                                // bad sendbase update
-                                logError(
-                                        "bad sendbase update of: " + ackNum + " " + "sendMax: "
-                                                + this.dataBuffer.getSendMax());
-                            }
-                            updateAck(oldSendBase, ackNum, payload.getWindow(), sampleRTT);
-                            sendData();
-                        } else if (ackNum == dataBuffer.getSendBase()) {
-                            if (dataBuffer.getSendBase() == dataBuffer.getSendMax()) {
-                                // window update
-                                RWND = payload.getWindow();
-                                sendData();
-                                break;
-                            }
-                            logOutput("bad ack! " + payload.getSeqNum() + "sendBase: " + dataBuffer.getSendBase());
-                            ackCounter += 1;
-                            if (ackCounter == 3) {
-                                updateLoss();
-                                fastRetransmit();
-                            }
+                        // sampling...
+                        if (ackNum == lastTransport.getSeqNum() + lastTransport.getPayload().length) {
+                            sample(ackNum, sampleRTT);
                         }
 
+                        // update sendbase
+                        ackCounter = 0;
+                        int oldSendBase = dataBuffer.acknowledge(ackNum);
+                        logOutput("old sendBase: " + oldSendBase + " acknum: " + ackNum);
+                        if (oldSendBase == -1) {
+                            logError(
+                                    "bad sendbase update of: " + ackNum + " " + "sendMax: "
+                                            + this.dataBuffer.getSendMax());
+                        }
+
+                        // update FC and CC
+                        updateAck(oldSendBase, ackNum, payload.getWindow(), sampleRTT);
+
+                        // update dack
+                        int dack = payload.getDSeqNum();
+                        if (mpSock.sendBuffer.acknowledge(dack) < 0){
+                            // dacks behave cumulatively
+                            // upon bad dack: should be able to rely on the fast-retransmission of the underlying TCPSock to manage this
+                        }
+                        sendData();
+                    } else if (ackNum == dataBuffer.getSendBase()) {
+                        if (dataBuffer.getSendBase() == dataBuffer.getSendMax()) {
+                            // window update
+                            RWND = payload.getWindow();
+                            sendData();
+                            break;
+                        }
+                        logOutput("bad ack! " + payload.getSeqNum() + "sendBase: " + dataBuffer.getSendBase());
+                        ackCounter += 1;
+                        if (ackCounter == 3) {
+                            updateLoss();
+                            fastRetransmit();
+                        }
                     }
+
                     break;
 
                 case MPTransport.FIN: // someone told us to terminate
@@ -361,6 +360,17 @@ public class TCPSendSock extends TCPSock implements Runnable {
     // }
 
     /* CC, FC, Reno, Cubic */
+
+    void sample(int ackNum, long sampleRTT) {
+        logOutput("SAMPLE! acknum" + ackNum + " targetseqnum:" + lastTransport.getSeqNum()
+                + "sendBase" + dataBuffer.getSendBase() + "len"
+                + lastTransport.getPayload().length);
+
+        estRTT = (long) (0.875 * estRTT + 0.125 * sampleRTT);
+        devRTT = (long) (0.75 * devRTT + 0.25 * Math.abs(sampleRTT - estRTT));
+        timeout = (int) (estRTT + 4 * devRTT);
+        logOutput("new Timeout:" + timeout);
+    }
 
     long getRTT(int newAck) {
         if (lastTransport != null && lastTransport.getSeqNum() + lastTransport.getPayload().length == newAck) {
@@ -458,8 +468,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
     int getPayloadSize() {
         logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
                 + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
-        return Math.max(0, min(MAX_PAYLOAD_SIZE, 
-        dataBuffer.getUnsent(),
+        return Math.max(0, min(MAX_PAYLOAD_SIZE,
+                dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
     }
 
