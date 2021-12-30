@@ -339,7 +339,7 @@ public class MPSock extends TCPSock {
             for (ConnID cID: keyList) {
                 BlockingQueue<Message> current = dataQMap.get(cID);
                 Message curMsgPeek = (Message) current.peek();
-                if (curMsgPeek.dsn == expectedDseq) { //in order write to buffer
+                if (curMsgPeek != null && curMsgPeek.dsn == expectedDseq) { //in order write to buffer
                     Message curMsg = (Message) current.poll();
                     receiverBuffer.write(curMsg.data, 0, curMsg.length);
                     polled = true;

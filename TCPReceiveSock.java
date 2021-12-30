@@ -35,7 +35,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     public void run() { // shared by listen socket and establish sockets
         while (true) {
-            logOutput("spin!");
             if (commandQ.peek() != null) { //
                 // process commands
                 Message.Command command = commandQ.poll().getCommand();
