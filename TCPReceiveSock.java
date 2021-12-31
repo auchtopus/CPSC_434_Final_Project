@@ -251,7 +251,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 if (dataQ.peek() != null){
                                     logOutput("currnetly in dataQ:"+ dataQ.peek().getDSN());
                                 }
-                                logOutput(Boolean.toString(this.dataQ.offer(mapping)));
+                                // logOutput(Boolean.toString(this.dataQ.offer(mapping)));
                                 this.dataQ.offer(mapping);
                                 assert (dataQ.peek() != null);
                             }
