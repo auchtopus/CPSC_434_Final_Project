@@ -73,7 +73,7 @@ public final class ReceiverByteBuffer extends Buffer{
         // Write INTO buffer
         int wrote = 0;
 
-        while (wrote < len && this.canWrite()) {
+        while (pos < len && this.canWrite()) {
 
             // if (wp == size){
 
@@ -91,7 +91,7 @@ public final class ReceiverByteBuffer extends Buffer{
         // out to destBuf
         // read OUT 
         int read = 0;
-        while (read < len && this.canRead()) {
+        while (pos < len && this.canRead()) {
             // parentSock.logOutput("BUF READING: " + buffer[loc(rp)]);
 
             destBuf[pos] = buffer[loc(rp)];

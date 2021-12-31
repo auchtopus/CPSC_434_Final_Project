@@ -13,6 +13,12 @@ public class TCPSendSock extends TCPSock implements Runnable {
     SenderByteBuffer dataBuffer;
     SenderIntBuffer dsnBuffer;
 
+    // tracking the status of the currently processing messaging
+    byte[] mappingDataBuffer;
+    int[] mappingDSNBuffer;
+    int dataLoaded = 0;
+    int mappingLen = 0;
+
     /*
      * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
      */
@@ -40,34 +46,37 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
             if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
 
-                mapping = dataQ.poll();
-                int dataWrote = 0;
-                logOutput("dQ.poll:" + mapping.getSize());
-                boolean run = true;
-                while (run) {
+                if (mappingLen == 0) {
+                    mapping = dataQ.poll();
+                    dataLoaded = 0;
+                    logOutput("dQ.poll:" + mapping.getSize());
+                    mappingLen = mapping.getSize();
 
-                    // write to dsnBuffer
-                    if (mapping.getSize() != dataWrote) {
-
-                        int[] newDSN = new int[mapping.getSize() - dataWrote];
-                        for (int i = dataWrote; i < mapping.getSize() - dataWrote; i++) {
-                            newDSN[i] = i + mapping.dsn;
-                        }
-                        dsnBuffer.write(newDSN, dataWrote, mapping.getSize() - dataWrote);
-
-                        // update the actual data
-                        int wrote = dataBuffer.write(mapping.data, dataWrote, mapping.getSize() - dataWrote);
-                        dataWrote += wrote;
+                    mappingDSNBuffer = new int[mapping.getSize()];
+                    for (int i = 0; i < mapping.getSize(); i++) {
+                        mappingDSNBuffer[i] = i;
                     }
-                    // by sending data here, we essentially "block" so that dataBuffer stores a full
-                    // mapping, then flush, then another mapping
+
+                    mappingDataBuffer = mapping.data;
+                }
+
+                // create the mirror dsn buffer; doing this outside for easier logic
+
+                while (dsnBuffer.canWrite()) {
+
+                    // update dsnBuffer
+                    dsnBuffer.write(mappingDSNBuffer, dataLoaded, mappingLen);
+
+                    // update dataBuffer
+                    int wrote = dataBuffer.write(mappingDataBuffer, dataLoaded, mappingLen - dataLoaded);
+                    dataLoaded += wrote;
                     sendData();
+                }
 
-                    run = false;
-                    // only two conditions to continue
-                    if (dataWrote < mapping.getSize() || dataBuffer.getUnsent() > 0) {
-                        run = true;
-                    }
+                if (dataLoaded == mappingLen) {
+                    // finished loading this current mapping into the buffer!
+                    mappingLen = 0;
+                    dataLoaded = 0;
                 }
                 // update the dsn index
 
@@ -83,6 +92,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
             // handle receieve
         }
+
     }
 
     public void addTimer(long deltaT, String methodName, String[] paramType, Object[] params) {
@@ -490,10 +500,10 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     int getPayloadSize() {
         logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" +
-        Integer.toString(dataBuffer.getUnsent())
-        + "|window:"
-        + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() -
-        dataBuffer.getSendBase())));
+                Integer.toString(dataBuffer.getUnsent())
+                + "|window:"
+                + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() -
+                        dataBuffer.getSendBase())));
         return Math.max(0, min(MAX_PAYLOAD_SIZE,
                 dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));

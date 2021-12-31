@@ -64,7 +64,7 @@ public class SenderByteBuffer extends Buffer{
         // in from srcBuf
         int wrote = 0;
 
-        while (wrote < len && this.canWrite()) {
+        while (pos < len && this.canWrite()) {
             buffer[loc(wp)] = srcBuf[pos];
             // parentSock.logOutput("BUF WRITING: wp: " + wp + " in val: " +srcBuf[pos] + " written: " + buffer[loc(wp)]);
             wrote++;
