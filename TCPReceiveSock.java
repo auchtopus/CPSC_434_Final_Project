@@ -50,7 +50,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                 }
             }
             try {
-                socketStatus();
+                // socketStatus();
                 receive();
             } catch (SocketTimeoutException e) {
                 continue;
@@ -211,11 +211,11 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         logOutput("==========================");
         if (payload.getType() == MPTransport.SYN && payload.getMpType() == MPTransport.MP_CAPABLE && this.role == LISTENER) { 
             // only for creating a new MPTCP connection, so this is only used by the original listenersocket
-            logOutput("hello!");
+            // logOutput("hello!");
             mpSock.handleNewConn(payload);
             receiveHandshakeMPSock(cID, payload);
         } else if (getState() == State.LISTEN) {
-            logOutput("hello2!");
+            // logOutput("hello2!");
             if (this.receiveHandshakeListener(cID, payload) == -1) {
                 refuse(cID.reverse());
             }
@@ -246,8 +246,8 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 dataBuffer.read(messagePayload, 0, len);
                                 dsnBuffer.read(dumpPayload, 0, len);
                                 // send message to BlockingQ
-                                Message mapping = new Message(messagePayload, newDSN[bytesRead - 1] - len, len);
-                                logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len) + ": " + dumpPayload[0]);
+                                Message mapping = new Message(messagePayload, dumpPayload[0], len);
+                                // logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len) + ": " + dumpPayload[0]);
                                 if (dataQ.peek() != null){
                                     logOutput("currnetly in dataQ:"+ dataQ.peek().getDSN());
                                 }

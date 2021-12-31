@@ -192,7 +192,7 @@ public class MPTransport {
         byteStream.write(mappingByteArray, 0, Math.min(mappingByteArray.length, 4));
 
         // here!
-        System.out.println("HEADER_SIZE + this.payload.length" + Integer.toString(HEADER_SIZE + this.payload.length));
+        // System.out.println("HEADER_SIZE + this.payload.length" + Integer.toString(HEADER_SIZE + this.payload.length));
 
         // write 2 bytes for packet size
         byte[] packetSizeByteArray = (BigInteger.valueOf(HEADER_SIZE + this.payload.length)).toByteArray();
@@ -270,7 +270,7 @@ public class MPTransport {
         }
         int packetLength = (new BigInteger(packetSizeByteArray)).intValue();
 
-        System.out.println("packetlength: " + packetLength);
+        // System.out.println("packetlength: " + packetLength);
 
         byte[] payload = new byte[packetLength - HEADER_SIZE];
         int bytesRead = Math.max(0, byteStream.read(payload, 0, payload.length));

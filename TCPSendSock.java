@@ -62,7 +62,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
                 // create the mirror dsn buffer; doing this outside for easier logic
 
-                while (dsnBuffer.canWrite()) {
+                while (dsnBuffer.canWrite() && dataLoaded < mappingLen) {
 
                     // update dsnBuffer
                     dsnBuffer.write(mappingDSNBuffer, dataLoaded, mappingLen);
@@ -73,8 +73,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
                     sendData();
                 }
 
+
+                logOutput("dL:" + dataLoaded + "mL:" + mappingLen);
                 if (dataLoaded == mappingLen) {
                     // finished loading this current mapping into the buffer!
+                    logOutput("finished mapping!");
                     mappingLen = 0;
                     dataLoaded = 0;
                 }
