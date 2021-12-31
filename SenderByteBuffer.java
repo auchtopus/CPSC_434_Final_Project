@@ -93,9 +93,9 @@ public class SenderByteBuffer extends Buffer{
         if (newSendBase > sendMax || newSendBase < this.sendBase.get()){
             return -1;
         }
-        AtomicInteger oldSendBase = this.sendBase;
+        int oldSendBase = this.sendBase.intValue();
         this.sendBase.set(newSendBase);
-        return oldSendBase.intValue(); 
+        return oldSendBase; 
     }
 
     public int reset(){
