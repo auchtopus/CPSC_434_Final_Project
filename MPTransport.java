@@ -12,9 +12,9 @@ import java.io.ByteArrayInputStream;
  */
 public class MPTransport {
 
-    public static final int MAX_PACKET_SIZE = 508;
-    public static final int HEADER_SIZE = 23;
-    public static final int MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - HEADER_SIZE;
+    public static final int MAX_PACKET_SIZE = 500;
+    public static final int HEADER_SIZE = 28;
+    public static final int MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - HEADER_SIZE; // This is because the payload size 
     public static final int MAX_PORT_NUM = 65535; // port numbers range from 0 to 255
 
     public static final int SYN = 0;
@@ -153,8 +153,9 @@ public class MPTransport {
         }
         byteStream.write(destPortByteArray, 0, Math.min(destPortByteArray.length, 4));
 
-        // byteStream.write(this.srcPort);
-        // byteStream.write(this.destPort);
+        // write 1 byte for type
+
+        // write 1 byte for mptype
         byteStream.write(this.type);
         byteStream.write(this.mpType);
 
@@ -190,7 +191,19 @@ public class MPTransport {
         }
         byteStream.write(mappingByteArray, 0, Math.min(mappingByteArray.length, 4));
 
-        byteStream.write(HEADER_SIZE + this.payload.length);
+        // here!
+        System.out.println("HEADER_SIZE + this.payload.length" + Integer.toString(HEADER_SIZE + this.payload.length));
+
+        // write 2 bytes for packet size
+        byte[] packetSizeByteArray = (BigInteger.valueOf(HEADER_SIZE + this.payload.length)).toByteArray();
+        paddingLength = 2 - packetSizeByteArray.length;
+        for (int i = 0; i < paddingLength; i++) {
+            byteStream.write(0);
+        }
+        byteStream.write(packetSizeByteArray, 0, Math.min(packetSizeByteArray.length, 2));
+
+
+        // write the payload
         byteStream.write(this.payload, 0, this.payload.length);
 
         return byteStream.toByteArray();
@@ -248,7 +261,16 @@ public class MPTransport {
         }
         int mapping = (new BigInteger(mappingByteArray)).intValue();
 
-        int packetLength = byteStream.read();
+        // int packetLength = byteStream.read();
+
+
+        byte[] packetSizeByteArray = new byte[2];
+        if (byteStream.read(packetSizeByteArray, 0, 2) != 2) {
+            return null;
+        }
+        int packetLength = (new BigInteger(packetSizeByteArray)).intValue();
+
+        System.out.println("packetlength: " + packetLength);
 
         byte[] payload = new byte[packetLength - HEADER_SIZE];
         int bytesRead = Math.max(0, byteStream.read(payload, 0, payload.length));

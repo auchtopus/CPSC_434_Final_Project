@@ -227,6 +227,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                         sendAck(false);
                     } else { // receieve a good packet on subflow acks
                         byte[] payloadBuffer = payload.getPayload();
+                        
                         int bytesRead = dataBuffer.write(payloadBuffer, 0, payloadBuffer.length);
                         if (bytesRead != payloadBuffer.length) {
                             logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
@@ -239,14 +240,17 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                             dsnBuffer.write(newDSN, 0, bytesRead);
                             logOutput("lenMapping:" + payload.getLenMapping());
                             if (payload.getLenMapping() != 0) { // len present, final bit in mapping
-                                Integer len = dataBuffer.getWrite() - dataBuffer.getRead();
+                                Integer len = dataBuffer.getSize(); // should flush everything
                                 byte[] messagePayload = new byte[len];
                                 int[] dumpPayload = new int[len];
                                 dataBuffer.read(messagePayload, 0, len);
                                 dsnBuffer.read(dumpPayload, 0, len);
                                 // send message to BlockingQ
                                 Message mapping = new Message(messagePayload, newDSN[bytesRead - 1] - len, len);
-                                logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len));
+                                logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len) + ": " + dumpPayload[0]);
+                                if (dataQ.peek() != null){
+                                    logOutput("currnetly in dataQ:"+ dataQ.peek().getDSN());
+                                }
                                 logOutput(Boolean.toString(this.dataQ.offer(mapping)));
                                 this.dataQ.offer(mapping);
                                 assert (dataQ.peek() != null);

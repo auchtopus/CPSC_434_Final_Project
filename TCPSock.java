@@ -8,6 +8,7 @@ import java.util.concurrent.BlockingQueue;
 import java.net.SocketTimeoutException;
 import java.io.IOException;
 import java.net.SocketException;
+import java.util.Arrays;    
 
 public abstract class TCPSock {
 
@@ -16,7 +17,7 @@ public abstract class TCPSock {
     final int RECEIVER = 1;
     final int LISTENER = 2;
     final int BUFFERSIZE = 600;
-    final int MAX_PACKET_SIZE = 500;
+    final int MAX_PACKET_SIZE = MPTransport.MAX_PACKET_SIZE;
     int MAX_PAYLOAD_SIZE = MPTransport.MAX_PAYLOAD_SIZE;
     int MSS = 128;
     boolean DELAY = false;
@@ -158,13 +159,14 @@ public abstract class TCPSock {
         DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
         UDPSock.receive(incomingPacket);
         byte[] incomingPayload = incomingPacket.getData();
-        Integer incomingPort = incomingPacket.getPort();
+        System.out.println("recv:" + Arrays.toString(incomingPayload));
+        System.out.println("recv:" + incomingPayload.length);
         InetAddress incomingAddress = incomingPacket.getAddress();
         MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
         ConnID incomingcID = new ConnID(incomingAddress, incomingTransport.getSrcPort(), this.addr,
                 incomingTransport.getDestPort());
-
-        // process it
+        logOutput("psize:" + incomingTransport.getPayload().length);
+        System.out.println(Arrays.toString(incomingTransport.getPayload()));
         handleReceive(incomingcID, incomingTransport);
         return;
     }
@@ -172,12 +174,15 @@ public abstract class TCPSock {
     Boolean sendSegment(ConnID cID, MPTransport payload) {
         logOutput("===== SEND SEGMENT STATE ======");
         printTransport(payload);
+        logOutput("psize:" + payload.getPayload().length);
         printcID(cID);
         socketStatus();
         lastTransport = payload;
         timeSent = timeService.getTime();
         byte[] bytePayload = payload.pack();
         // Brian send!
+        System.out.println("Send:" + Arrays.toString(bytePayload));
+        System.out.println("Send:" +bytePayload.length);
         try {
             // payload = "hello!".getBytes();
             DatagramPacket packet = new DatagramPacket(bytePayload, bytePayload.length, cID.destAddr, cID.destPort);
