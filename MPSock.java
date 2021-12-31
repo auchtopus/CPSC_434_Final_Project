@@ -3,30 +3,10 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import javax.sound.midi.Receiver;
+import javax.sound.sampled.SourceDataLine;
 
 import java.net.*;
 import java.io.*;
-
-/**
- * <p>
- * Title: CPSC 433/533 Programming Assignment
- * </p>
- *
- * <p>
- * Description: Fishnet TCP manager
- * </p>
- *
- * <p>
- * Copyright: Copyright (c) 2006
- * </p>
- *
- * <p>
- * Company: Yale University
- * </p>
- *
- * @author Hao Wanga
- * @version 1.0
- */
 
 public class MPSock extends TCPSock {
     final int SENDER = 0;
@@ -41,8 +21,8 @@ public class MPSock extends TCPSock {
     // MPTCP
     Hashtable<ConnID, BlockingQueue<Message>> dataQMap;
     Hashtable<ConnID, BlockingQueue<Message>> commandQMap;
-    SenderByteBuffer sendBuffer;
-    ReceiverByteBuffer receiverBuffer;
+    public SenderByteBuffer sendBuffer;
+    public ReceiverByteBuffer receiverBuffer;
 
     // debug
     Verbose verboseState;
@@ -93,6 +73,8 @@ public class MPSock extends TCPSock {
         Runnable sendSockRunnable = (Runnable) sendSock;
         Thread sendSockThread = new Thread(sendSockRunnable);
         sendSockThread.start();
+
+        System.out.println();
         this.state = State.SYN_SENT;
 
         // configure the state for opened connections
@@ -115,6 +97,7 @@ public class MPSock extends TCPSock {
             // this needs to block!
 
             receiverBuffer = new ReceiverByteBuffer(BUFFERSIZE);
+            System.out.println("mp: " + receiverBuffer.wp);
         }
         return this; // return this MPSock as we only have one connection
     }
@@ -334,16 +317,23 @@ public class MPSock extends TCPSock {
         // buffer.getState();
         // peek all the blocks in the dataQlist and compare with DSN expected
         int expectedDseq = receiverBuffer.getWrite();
+        // System.out.println("expdseq:" + expectedDseq);
         ArrayList<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
         boolean polled = true;
         while (polled){
             polled = false;
             for (ConnID cID: keyList) {
                 BlockingQueue<Message> current = dataQMap.get(cID);
+                // logOutput("read cID:"+ cID.toString());
                 Message curMsgPeek = (Message) current.peek();
+                // if (curMsgPeek != null){
+                //     logOutput("dsn:" + curMsgPeek.getDSN());
+                // }
                 if (curMsgPeek != null && curMsgPeek.dsn == expectedDseq) { //in order write to buffer
+                    System.out.println("peek:"+ curMsgPeek);
                     Message curMsg = (Message) current.poll();
-                    receiverBuffer.write(curMsg.data, 0, curMsg.length);
+                    int bytesWritten = receiverBuffer.write(curMsg.data, 0, curMsg.length);
+                    System.out.println("wrote:" + bytesWritten);
                     polled = true;
                 }
             }

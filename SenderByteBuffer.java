@@ -2,7 +2,7 @@ import java.util.concurrent.atomic.*;
 
 public class SenderByteBuffer extends Buffer{
     byte[] buffer;
-    AtomicInteger sendBase;
+    volatile AtomicInteger sendBase;
     int sendMax; // write head; also the nextseqnum
     int wp;
     int size;

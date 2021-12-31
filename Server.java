@@ -30,6 +30,7 @@ public class Server {
             try {
                 byte[] readBuf = new byte[500];
                 int readLen = mpSock.read(readBuf, 0, readBuf.length);
+                // System.out.println("readlen:" + readLen);
                 if (readLen > 0) {
                     for (int i = 0; i < readBuf.length; i++) {
                         System.out.print((int) readBuf[i]);

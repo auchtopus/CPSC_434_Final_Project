@@ -43,20 +43,31 @@ public class TCPSendSock extends TCPSock implements Runnable {
                 mapping = dataQ.poll();
                 int dataWrote = 0;
                 logOutput("dQ.poll:" + mapping.getSize());
-                while (dataWrote < mapping.getSize()){
+                boolean run = true;
+                while (run) {
 
                     // write to dsnBuffer
-                    int[] newDSN = new int[mapping.getSize()];
-                    for (int i = dataWrote; i < mapping.getSize(); i++) {
-                        newDSN[i] = i + mapping.dsn;
+                    if (mapping.getSize() != dataWrote) {
+
+                        int[] newDSN = new int[mapping.getSize() - dataWrote];
+                        for (int i = dataWrote; i < mapping.getSize() - dataWrote; i++) {
+                            newDSN[i] = i + mapping.dsn;
+                        }
+                        dsnBuffer.write(newDSN, dataWrote, mapping.getSize() - dataWrote);
+
+                        // update the actual data
+                        int wrote = dataBuffer.write(mapping.data, dataWrote, mapping.getSize() - dataWrote);
+                        dataWrote += wrote;
                     }
-                    dsnBuffer.write(newDSN, 0, mapping.getSize());
-    
-                    // update the actual data
-                    int wrote = dataBuffer.write(mapping.data, 0, mapping.getSize());
-                    dataWrote += wrote;
-                    // by sending data here, we essentially "block" so that dataBuffer stores a full mapping, then flush, then another mapping
+                    // by sending data here, we essentially "block" so that dataBuffer stores a full
+                    // mapping, then flush, then another mapping
                     sendData();
+
+                    run = false;
+                    // only two conditions to continue
+                    if (dataWrote < mapping.getSize() || dataBuffer.getUnsent() > 0) {
+                        run = true;
+                    }
                 }
                 // update the dsn index
 
@@ -185,7 +196,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
         while (newPayloadSize > 0) {
             // TODO: use the dsnBuffer!
 
-            
             int mapping = 0;
             // prepare the byte buffer
 
@@ -201,7 +211,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
             if (payloadWritten != newPayloadSize) {
                 logError("Write failure: payloadWritten: " + payloadWritten + " payloadSize" + newPayloadSize);
             }
-
+            socketStatus();
+            logOutput("unsent:" + dataBuffer.getUnsent());
             if (dataBuffer.getUnsent() == 0) {
                 mapping = payloadWritten;
             }
@@ -478,9 +489,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
     int getPayloadSize() {
-        // logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
-        //         + "|window:"
-        //         + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
+        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" +
+        Integer.toString(dataBuffer.getUnsent())
+        + "|window:"
+        + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() -
+        dataBuffer.getSendBase())));
         return Math.max(0, min(MAX_PAYLOAD_SIZE,
                 dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
@@ -515,44 +528,45 @@ public class TCPSendSock extends TCPSock implements Runnable {
      */
     // todo: determine if anybody even calls
     // public int write(byte[] buf, int pos, int len) {
-    //     logOutput("===== Before write =====");
-    //     int bytesWrite = dataBuffer.write(buf, pos, len);
-    //     if (bytesWrite == -1) {
-    //         return -1;
-    //     }
-    //     sendData();
-    //     logOutput("===== After write  =====");
-    //     return bytesWrite;
+    // logOutput("===== Before write =====");
+    // int bytesWrite = dataBuffer.write(buf, pos, len);
+    // if (bytesWrite == -1) {
+    // return -1;
+    // }
+    // sendData();
+    // logOutput("===== After write =====");
+    // return bytesWrite;
     // }
 
     // /**
-    //  * Read from the socket up to len bytes into the buffer buf starting at position
-    //  * pos.
-    //  *
-    //  * @param buf byte[] the buffer
-    //  * @param pos int starting position in buffer
-    //  * @param len int number of bytes to read
-    //  * @return int on success, the number of bytes read, which may be smaller than
-    //  *         len; on failure, -1
-    //  */
+    // * Read from the socket up to len bytes into the buffer buf starting at
+    // position
+    // * pos.
+    // *
+    // * @param buf byte[] the buffer
+    // * @param pos int starting position in buffer
+    // * @param len int number of bytes to read
+    // * @return int on success, the number of bytes read, which may be smaller than
+    // * len; on failure, -1
+    // */
     // public int read(byte[] buf, int pos, int len) {
-    //     boolean sendUpdate = false;
-    //     if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
-    //         // buffer out of space
-    //         sendUpdate = true;
+    // boolean sendUpdate = false;
+    // if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
+    // // buffer out of space
+    // sendUpdate = true;
 
-    //     }
+    // }
 
-    //     if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
-    //         logOutput("Receiver buffer cleared, no more data incoming");
-    //         state = State.CLOSED;
-    //         return 0;
-    //     }
-    //     logOutput("===== Before read  =====");
-    //     int bytesRead = dataBuffer.read(buf, pos, len);
-    //     logOutput("===== After read   =====");
+    // if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
+    // logOutput("Receiver buffer cleared, no more data incoming");
+    // state = State.CLOSED;
+    // return 0;
+    // }
+    // logOutput("===== Before read =====");
+    // int bytesRead = dataBuffer.read(buf, pos, len);
+    // logOutput("===== After read =====");
 
-    //     return bytesRead;
+    // return bytesRead;
     // }
 
     public void socketStatus() {

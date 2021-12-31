@@ -18,7 +18,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     public TCPReceiveSock(MPSock mpSock, InetAddress addr, int port, BlockingQueue<Message> dataQ,
             BlockingQueue<Message> commandQ) {
         ///
-        super();
+        super(); 
         this.mpSock = mpSock;
         this.addr = addr;
         this.port = port;
@@ -34,9 +34,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     }
 
     public void run() { // shared by listen socket and establish sockets
-        socketStatus();
+        // socketStatus();
         while (true) {
-            socketStatus();
+            // socketStatus();
             if (commandQ.peek() != null) { //
                 // process commands
                 Message.Command command = commandQ.poll().getCommand();
@@ -165,6 +165,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     }
 
     public int sendAck(boolean goodAck) { // no timer needed on acks
+        System.out.println("tcp: " + mpSock.receiverBuffer.wp);
         MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0, dataBuffer.getAvail(),
                 dataBuffer.getWrite(), mpSock.receiverBuffer.getWrite(), 0, new byte[0]);
         logOutput("AVAIL: " + dataBuffer.getAvail());
@@ -236,6 +237,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 newDSN[i] = i + payload.getDSeqNum();
                             }
                             dsnBuffer.write(newDSN, 0, bytesRead);
+                            logOutput("lenMapping:" + payload.getLenMapping());
                             if (payload.getLenMapping() != 0) { // len present, final bit in mapping
                                 Integer len = dataBuffer.getWrite() - dataBuffer.getRead();
                                 byte[] messagePayload = new byte[len];
@@ -244,7 +246,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 dsnBuffer.read(dumpPayload, 0, len);
                                 // send message to BlockingQ
                                 Message mapping = new Message(messagePayload, newDSN[bytesRead - 1] - len, len);
+                                logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len));
+                                logOutput(Boolean.toString(this.dataQ.offer(mapping)));
                                 this.dataQ.offer(mapping);
+                                assert (dataQ.peek() != null);
                             }
                             sendAck(true);
                         }

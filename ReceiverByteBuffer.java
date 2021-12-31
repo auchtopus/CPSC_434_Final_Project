@@ -9,10 +9,10 @@ Invariants:
 
 */
 
-public class ReceiverByteBuffer extends Buffer{
+public final class ReceiverByteBuffer extends Buffer{
     byte[] buffer;
     int rp;
-    AtomicInteger wp;
+    public final AtomicInteger wp;
     int size;
     // need 0 < wp - rp < size
 
@@ -23,8 +23,9 @@ public class ReceiverByteBuffer extends Buffer{
         this.size = size;
     }
 
-    public int getWrite() {
+    public final int getWrite() {
         // returns ABSOLUTE write pointer index
+
         return wp.intValue();
     }
 
