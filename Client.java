@@ -17,12 +17,13 @@ public class Client {
             while (i < 10000) {
                 int randSize = randGen.nextInt(400);
                 byte[] message = new byte[randSize];
-                for(int j = 0; j < randSize; j++){
-                    message[j] = (byte)((i + j)%128);
+                for (int j = 0; j < randSize; j++) {
+                    message[j] = (byte) ((i + j) % 128);
                 }
                 int bytesWritten = mpSock.write(message, 0, randSize);
                 // System.out.println("wrote packet size : " + Integer.toString(bytesWritten));
                 i += bytesWritten;
+
             }
             mpSock.close();
         } catch (Exception e) {

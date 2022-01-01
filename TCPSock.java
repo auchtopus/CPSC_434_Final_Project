@@ -8,7 +8,7 @@ import java.util.concurrent.BlockingQueue;
 import java.net.SocketTimeoutException;
 import java.io.IOException;
 import java.net.SocketException;
-import java.util.Arrays;    
+import java.util.Arrays;
 
 public abstract class TCPSock {
 
@@ -202,19 +202,17 @@ public abstract class TCPSock {
             ;
         }
 
-        
         logOutput("===============================");
         return true;
         // logSender(payload);
 
     }
 
-    void handleReceive(ConnID cID, MPTransport payload){};
-
+    void handleReceive(ConnID cID, MPTransport payload) {
+    };
 
     void removeEstSocket(ConnID cID) {
     }
-
 
     /* Socket API */
 
@@ -237,7 +235,8 @@ public abstract class TCPSock {
     /* Logging */
 
     void printTransport(MPTransport t) {
-        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|dsn:" + t.getDSeqNum() + "|wsize:" + t.getWindow() + "|psize:"
+        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|dsn:" + t.getDSeqNum() + "|wsize:"
+                + t.getWindow() + "|psize:"
                 + t.getPayload().length + "|map:" + t.getLenMapping());
     }
 
@@ -266,80 +265,82 @@ public abstract class TCPSock {
     void logSendAck(boolean goodAck) {
         // System.out.print("ACKPRINT");
         // if (goodAck) {
-        //     System.out.print(".");
+        // System.out.print(".");
         // } else {
-        //     System.out.print("?");
+        // System.out.print("?");
         // }
     }
 
     void logSender(MPTransport payload) {
         // if (verboseState == Verbose.REPORT) {
-        //     // System.out.print("SENDPRINT");
-        //     if (payload.getType() == MPTransport.SYN) {
-        //         System.out.print("S");
-        //     } else if (payload.getType() == MPTransport.FIN) {
-        //         System.out.print("F");
-        //     } else if (payload.getType() == MPTransport.DATA) {
-        //         if (payload.getSeqNum() + payload.getPayload().length == dataBuffer.getSendMax()) {
-        //             System.out.print(".");
-        //         } else if (payload.getSeqNum() + payload.getPayload().length < dataBuffer.getSendMax()) {
-        //             System.out.print("!");
-        //         }
-        //     } else if (payload.getType() == MPTransport.ACK) {
-        //         // System.out.print("ERROR");
-        //         ; // this function does not log!
-        //     }
+        // // System.out.print("SENDPRINT");
+        // if (payload.getType() == MPTransport.SYN) {
+        // System.out.print("S");
+        // } else if (payload.getType() == MPTransport.FIN) {
+        // System.out.print("F");
+        // } else if (payload.getType() == MPTransport.DATA) {
+        // if (payload.getSeqNum() + payload.getPayload().length ==
+        // dataBuffer.getSendMax()) {
+        // System.out.print(".");
+        // } else if (payload.getSeqNum() + payload.getPayload().length <
+        // dataBuffer.getSendMax()) {
+        // System.out.print("!");
+        // }
+        // } else if (payload.getType() == MPTransport.ACK) {
+        // // System.out.print("ERROR");
+        // ; // this function does not log!
+        // }
         // }
 
     }
 
     void logReceive(MPTransport payload) {
         // if (verboseState == Verbose.REPORT) {
-        //     // System.out.print("RECEIVEPRINT");
-        //     if (payload.getType() == MPTransport.SYN) {
-        //         System.out.print("S");
-        //     } else if (payload.getType() == MPTransport.FIN) {
-        //         System.out.print("F");
-        //     } else if (payload.getType() == MPTransport.DATA) {
-        //         if (role == SENDER) {
-        //             ;
-        //         } else if (role == RECEIVER) {
-        //             if (payload.getSeqNum() == dataBuffer.getWrite()) {
-        //                 System.out.print(".");
-        //             } else {
-        //                 System.out.print("!");
-        //             }
+        // // System.out.print("RECEIVEPRINT");
+        // if (payload.getType() == MPTransport.SYN) {
+        // System.out.print("S");
+        // } else if (payload.getType() == MPTransport.FIN) {
+        // System.out.print("F");
+        // } else if (payload.getType() == MPTransport.DATA) {
+        // if (role == SENDER) {
+        // ;
+        // } else if (role == RECEIVER) {
+        // if (payload.getSeqNum() == dataBuffer.getWrite()) {
+        // System.out.print(".");
+        // } else {
+        // System.out.print("!");
+        // }
 
-        //         } else if (role == LISTENER) {
+        // } else if (role == LISTENER) {
 
-        //         }
+        // }
 
-        //     } else if (payload.getType() == MPTransport.ACK) {
-        //         if (role == SENDER) {
-        //             if (payload.getSeqNum() == dataBuffer.getSendBase()) {
-        //                 System.out.print("?");
-        //             } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
-        //                 System.out.print(".");
-        //             } else {
-        //                 System.out.print("ERROR");
-        //             }
-        //         } else if (role == RECEIVER) {
-        //             if (payload.getSeqNum() == dataBuffer.getWrite()) {
-        //                 System.out.print(".");
-        //             } else {
-        //                 System.out.print("?");
-        //             }
+        // } else if (payload.getType() == MPTransport.ACK) {
+        // if (role == SENDER) {
+        // if (payload.getSeqNum() == dataBuffer.getSendBase()) {
+        // System.out.print("?");
+        // } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
+        // System.out.print(".");
+        // } else {
+        // System.out.print("ERROR");
+        // }
+        // } else if (role == RECEIVER) {
+        // if (payload.getSeqNum() == dataBuffer.getWrite()) {
+        // System.out.print(".");
+        // } else {
+        // System.out.print("?");
+        // }
 
-        //         } else if (role == LISTENER) {
+        // } else if (role == LISTENER) {
 
-        //         }
+        // }
 
-        //     }
+        // }
         // }
     }
 
-
-    void socketStatus(){}
+    void socketStatus() {
+    }
     /* Utilities */
 
     public int min(int a, int b, int c) {

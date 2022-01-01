@@ -73,7 +73,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
                     sendData();
                 }
 
-
                 // logOutput("dL:" + dataLoaded + "mL:" + mappingLen);
                 if (dataLoaded == mappingLen) {
                     // finished loading this current mapping into the buffer!
