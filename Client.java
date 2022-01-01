@@ -31,7 +31,6 @@ public class Client {
         } else {
             v = 0;
         }
-        System.out.println("v:" + v);
         boolean added = false;
         try {
             mpSock = new MPSock(InetAddress.getByName("127.0.0.1"), 4444, v);
@@ -40,17 +39,15 @@ public class Client {
                 mpSock.addSubflow(InetAddress.getByName("10.0.0.1"), 8001 + i, InetAddress.getByName("127.0.0.1"), 4445);
             }
 
-            int i = 0;
-            while (i < targBytes) {
-                int randSize = randGen.nextInt(400);
+            int bytesSent = 0;
+            while (bytesSent < targBytes) {
+                int randSize = Math.min(randGen.nextInt(400), targBytes - bytesSent);
                 byte[] message = new byte[randSize];
                 for (int j = 0; j < randSize; j++) {
-                    message[j] = (byte) ((i + j) % 128);
+                    message[j] = (byte) ((bytesSent + j) % 128);
                 }
                 int bytesWritten = mpSock.write(message, 0, randSize);
-                // System.out.println("wrote packet size : " + Integer.toString(bytesWritten));
-                i += bytesWritten;
-
+                bytesSent += bytesWritten;
             }
             mpSock.close();
         } catch (Exception e) {

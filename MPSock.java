@@ -238,7 +238,7 @@ public class MPSock extends TCPSock {
      */
     public int write(byte[] buf, int pos, int len) {
         // logOutput("===== Before write =====");
-        
+        logOutput("state:" + sendBuffer.toString());
         int bytesWrite = sendBuffer.write(buf, pos, len);
         if (bytesWrite == -1) {
             return -1;
@@ -249,6 +249,7 @@ public class MPSock extends TCPSock {
         readToQ();
         // logOutput("===== After write =====");
         // buffer.getState();
+
         return bytesWrite; 
     }
 

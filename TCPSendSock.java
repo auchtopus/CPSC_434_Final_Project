@@ -282,6 +282,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
                         int oldSendBase = dataBuffer.acknowledge(ackNum);
                         dsnBuffer.acknowledge(ackNum);
                         logOutput("old sendBase: " + oldSendBase + " acknum: " + ackNum);
+                        mpSock.sendBuffer.acknowledge(dack);
                         if (oldSendBase == -1) {
                             logError(
                                     "bad sendbase update of: " + ackNum + " " + "sendMax: "
@@ -298,8 +299,9 @@ public class TCPSendSock extends TCPSock implements Runnable {
                     } else if (ackNum == dataBuffer.getSendBase()) {
                         if (dataBuffer.getSendBase() == dataBuffer.getSendMax()) {
                             logOutput("window update");
-                            // window update
+                            logOutput("qlen:" + dataQ.size());
                             RWND = payload.getWindow();
+                            mpSock.sendBuffer.acknowledge(dack);
                             sendData();
                             break;
                         }
