@@ -9,7 +9,7 @@ public class Buffer {
     }
 
     public int getWrite(){
-        return 10;
+        return 0;
     }
 
     public int getRead(){
