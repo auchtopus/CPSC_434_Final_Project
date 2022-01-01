@@ -1,0 +1,348 @@
+# MPTCP 
+- Toy implementation of [[RFC8684](https://datatracker.ietf.org/doc/html/rfc8684.html)] over UDP for CPSC 434 Topics in Network Systems Final Project.
+- Contributors: Anthony Jiang, Brian Liu, Himnish Hunma
+
+
+- [MPTCP](#mptcp)
+  - [Usage](#usage)
+    - [Simulation Instructions:](#simulation-instructions)
+    - [Server/Client CLI:](#serverclient-cli)
+    - [MPSock API:](#mpsock-api)
+    - [Supported features](#supported-features)
+      - [MPTCP Design Targets](#mptcp-design-targets)
+      - [Protocol Features](#protocol-features)
+  - [Implementation details:](#implementation-details)
+      - [Overview](#overview)
+    - [Terminology:](#terminology)
+    - [High-level architecture](#high-level-architecture)
+      - [Setup/teardown state diagrams](#setupteardown-state-diagrams)
+      - [Transmission Logic](#transmission-logic)
+    - [Moving away from Fishnet](#moving-away-from-fishnet)
+    - [Header Options](#header-options)
+    - [Data Sequence Mappings:](#data-sequence-mappings)
+      - [Fairness](#fairness)
+      - [Retransmission](#retransmission)
+    - [Discussion:](#discussion)
+  - [Future work](#future-work)
+
+## Usage
+
+
+
+### Simulation Instructions:
+1. Download and build (requires a java compiler):
+```
+git clone https://www.github.com/auchtopus/CPSC_434_Final_Project
+cd CPSC_434_Final_Project
+javac *.java
+```
+2. Open a second terminal, and `cd` to the directory
+3. In the second terminal, run `java Server 10000 0`. It should report: "`Server listening on port 4445`"
+4. in the first terminal, run `java Client 10000 [numPaths] 0` for whatever number of paths you choose.
+5. Wait a few seconds and the server terminal should report the summary: 
+
+
+### Server/Client CLI:
+
+```
+Client:
+java Client [bytesTransfer] [numPaths] [verbosity]
+
+    bytesTransfer:  bytes to transfer (default 10000)
+    numPaths:       number of paths to open (default 1)
+    verbosity:      whether to print messaging/debug 
+                    information. 0 for SILENT, 2 for FULL. (default 0)
+
+
+Server:
+java Server [bytesTransfer] [verbosity]
+
+    bytesTransfer:  bytes to transfer (default 10000)
+    verbosity:      whether to print messaging/debug information.
+                    0 for SILENT, 2 for FULL. (default 0)
+
+```
+
+Ensure that when you run, `bytesTransfer` is equal on both sides for profiling to work
+
+
+The server will listen on one port, and then open other ports as it receives more path connections automatically. 4445 is the listen port, then 4446, 4447, etc. open for new connections.
+
+The client will open more paths on individual ports (4444, then 8000, 8001, etc. etc.) depending on the number of connections. 
+
+
+### MPSock API:
+- unfinished (and likely not fully compliant with a published MPTCP implementation)
+
+### Supported features
+#### MPTCP Design Targets
+- [x] [[RFC8684](https://datatracker.ietf.org/doc/html/rfc8684)] TCP Compatibility (Unidirectional with partial handshakes, but fully complaint FC, Reno CC, Retransmission) build on Project 2 TCPSockets
+- [x] [[RFC6182](https://datatracker.ietf.org/doc/html/rfc6182#section-2.1)] Multipath + Reinjection. (The reinjection is not fully implemented; see here for a full discussion.)
+- [ ] [[RFC6356](https://datatracker.ietf.org/doc/html/rfc6356)] Fairness + "do no harm" (In progress)
+
+#### Protocol Features
+- [ ] Tokens
+- [ ] Crypto/handshake
+- [X] `MP_JOIN`
+- [X] `MP_CAPABLE`
+- [ ] Address Advertisement (In Progress)
+- [X] Data Sequence Mappings
+- [ ] Reinjection (In Progress) (In Progress, Issue #16, see )
+- [x] Congestion Control (Reno) and Flow control
+- [ ] Fairness 
+- [x] Teardown 
+
+
+
+## Implementation details:
+
+
+#### Overview
+We extend Project 2 (reliable transport) to support Multi-path TCP. Since Fishnet's functionalities do not allow us to implement MPTCP, we bypass fishnet, and instead
+use Java's Datagram library to send packets over UDP. To be specific:  Fishnet only permits a socket to have one address and one port. To change this would require rewiring Fishnet's scheduler to accept a new class of object. Given the complexity of the Fishnet code base and the relative straightforward nature of adding timers from the ground up in Java, we decided to eliminate the Fishnet restriction.
+
+Coupled with our transition to UDP, we decided to reimplement MPTCP over UDP, while retaining as much code reuse as possible. The logical conclusion was to remap the control functionalities of `Node` and `TCPManager` into the client-facing `MPSock`, keeping the TCP socket as constant as possible. In some sense, the `MPSock` is the application layer to the TCP socket, and the TCP socket is never exposed via a public interface. 
+
+
+Consistent with `RFC-6824` and `RFC-8684`, a handshake between two MPSocks is required to establish a MPTCP connection. Once the connection is established, the client
+can proceed to add subflows to the connection, again with a handshake mechanism similar to the one we implement in Project 2. For simplicity, we do not hash each endpoint's key.
+Each subflow is managed by a TCP Socket (implemented as `TCPReceiveSock` and `TCPSendSock` for the receiver and sender, respectively), which in turn contains a UDP Socket
+to send and receive UDP Packets containing `MPTransport` packets as payload.
+
+As such, we have basically rewritten the entirety of Project 2, from the application layer down (technically down even to the link layer because we use UDP within a LAN instead of fishnet's localhost communication). 
+
+The overall structure of our code looks very much like what is given in RFC8684
+```
+ +-------------------------------+
+ |           Application         |
+ +-------------------------------+
+ |             MPTCP             |
+ + - - - - - - - + - - - - - - - +
+ | Subflow (TCP) | Subflow (TCP) |
+ +-------------------------------+
+ |       IP      |      IP       |
+ +-------------------------------+
+```
+### Terminology:
+A few key concepts have slightly different variable names
+| Term | Object|
+| - | - |
+| `DSN` or `DACK` | Data Sequence Number/Data Ack (depending on the packet type) |
+| `seq` | subflow sequence number | 
+| `sendBase` | lowest sequence number (either subflow-level or connection-level) of unacked bytes |
+| `sendMax` | lowest sequence number (either subflow-level or connection-level) of usent bytes. |
+| `wp` (write pointer) | lowest unwritten byte in a buffer |
+| `rp` (read pointer) | lowest unread byte in a buffer |
+| a method ending in `RT` (i.e. `sendDataRT` or `sendFinRT`) | A method called repeatedly via timer until certain conditions are met |
+| `mapping` or `message` | these are interchangeable, and refer to a data sequence mapping, explained later |
+| `TCPSock` | A child TCPSocket |
+| `MPSock` | The client-facing MPTCP socket |
+
+
+### High-level architecture
+
+A diagram can be found here:
+<!--[if IE]><meta http-equiv="X-UA-Compatible" content="IE=5,IE=9" ><![endif]-->
+![](./assets/MPTCP.drawio.png)
+
+
+We had multiple design considerations involved in building our architecture. 
+
+We had two primary objectives:
+1. Reuse as much code as possible. We wanted to use the underlying TCP logic because that has been verified over the course of a month. 
+2. Reduce technical complexity, even if it means a slight increase in logical complexity. This meant sticking to simpler Java concurrency primitives and avoiding complicated synchronizations and locks.
+
+
+The first objective was reasonable and did save us significant time and effort; our underlying TCP logic, congestion control, and flow control remained unchanged. Unfortunately, did this hamstring us in terms of the MPSock<->TCPsock interface, and also made implementation of shared RWND/CWND slightly trickier, but ultimately both of these are small issues compared to the rock-solid guarantee of a functioning TCP, Congestion Control, Flow Control, and Fast Retransmit. 
+
+As part of this, we modified the ring buffers from project 2 because their implementation was mature and reliable. All buffers are either ring buffers or Java `BlockingQueue`s.
+
+Our efforts to reduce technical complexity backfired. We immediately jumped to multithreading in to order achieve parallelism and non-blocking behavior, but did not do sufficient due diligence into locking and synchronization, instead preferring thread-safe blocking queues and atomic variables. These were initially easier to reason about, but came with performance compromises.
+
+There are two primary components to the architecture:
+
+1. The setup/teardown state diagrams
+2. Transmission logic
+
+
+#### Setup/teardown state diagrams
+
+
+
+The state diagram for the TCP operations within each subflow is very similar to the one from Project 2, since we are abstracting away a subflow to be a single path TCP. 
+
+
+
+![](/assets/state_diagram_1.png)
+
+
+The state diagram for the MPTCP ends up nesting the TCP state machine inside subflows, implementing logic for communication upstream and downstream from multiplexer to subflow and implementing handshake and teardown for the multiplexers on the sending and receiving sides.
+
+#### Transmission Logic
+
+Every box is a separate thread. (the MPSock's are run inside the application thread and have no busy-wait)
+![](/assets/state_diagram_2.png)
+
+
+Upon `MPSock.write()`, data is written from client to the `MPSock`'s internal buffer. From here, it will call `readToQ` to transfer data to the appropriate data queue for passing messages to the child TCP. The size of the mapping and the target TCPsock should be decided by [[RFC6356]](https://datatracker.ietf.org/doc/html/rfc6356) but we have only implemented an alternation strategy, with mappings sized by the client randomly. The mapping will have consist of the data, the DSN associated with the start of it, and the length of the data. As far as the MPSock is concerned, the mapping has been sent and is completely downstream now.
+
+Once in the dataQ, the child TCPsock will pop once it is available to work on transmitting a new mapping. It will first save a copy of the mapping locally in case the mapping size exceeds its internal buffer size. It will transmit the mapping in accordance to the TCP protocol. The DSN handling is described [here](#data-sequence-mappings-the-core-difficulty-of-mptcp).
+
+On the receiver side, the `TCPSock` will slowly collect the packets until a complete mapping is received, then will put it into a dataQ for the `MPSock`. Each Receiver side `MPSock` is thus feeding a dataQ which is implicitly sorted by both sequence number and DSN. the `MPSock` is thus performing a merge, popping the mapping with the desired DSN from the queues, writing it to its buffer, and then passing it to the application upon calls to `.read()`. 
+
+
+
+### Moving away from Fishnet
+Although fishnet is essential for Project 2, we cannot implement MPTCP on top of fishnet due to its restrictions of a single interface per node. As a result, we implement MPTCP by associating an endpoint with multiple IP addresses and ports. The packets between endpoints are then sent via UDP by specifying IP address and port. For simplicity, we use different ports on the same IP address as an abstraction. A problem with this, then, is that UDP sockets are contained within TCPSock, which are not initialized upon initialization of MPSock. To this end, on the server side, when we initialize a MPSock as listenSocket, we also initialize a listening TCPSock with a corresponding UDP socket to enable receiving UDP packets. Conversely, on the client size, when we initialize the MPSock to initialize the connection, we also create a corresponding TCPSock and a UDP socket to enable sending the initial SYN packet with MP_CAPABLE. This packet is parsed by the server MPSock using method calls from TCPSock. 
+
+Moving away from Fishnet also means decoupling our Project 2 code from fishnet, which required us to implement timers and callbacks independent from fishnet's scheduler. To this end, we use Java's Timer class to simulate callbacks. We spawn a new thread that wakes up when timeout occurs. Without Fishthread, we furthermore had to implement our own thread logic to make the transport non-blocking. For instance, Datagram socket.receive() is a blocking operation: it hangs until a UDP packet is received. Therefore, we could not simply call receive() on our UDP socket, since it would block the rest of the application logic. As a result, we add a callback on a new thread to receive() every time a packet is sent, to receive UDP packets without blocking.
+
+As part of our transition to a multithreaded model, implementing the Runnable` Interface instead of Fishthreads for scheduling, we needed to implement safe inter-thread communication. Our solution was to use atomic datatypes for communicating data with one editor but multiple read only accessors, as well as blocking queues to enable non-blocking transfer of data between TCPSocks and MPSock parent classes. 
+
+### Header Options
+Implementing MPTCP requires changes to the Transport packet, which has been edited as `MPTransport`. We add MPTCP-specific fields such as Data Sequence Number (DSN), length of mapping, and flags. `MPSock` is implemented as an application-layer socket API for MPTCP connections. To establish MPTCP connection between `MPSock`, the sender is to send a `SYN` packet with flag `MP_CAPABLE` set to the receiver.
+In response, receiver is to send an `ACK` with `MP_CAPABLE` set, establishing the connection. Once a MPTCP connection is established, the client can proceed to add subflows by establishing a `TCPSock` within its `MPSock` and send a `SYN` PACKET with the `MP_JOIN` flag set.
+The receiver is to send an `ACK` with `MP_JOIN` set, establishing the subflow connection. All `SYN` packets are subject to a timeout interval that trigger a callback.
+We adjusted the protocol to not use keys and tokens (hash of keys) for authentication, to focus on our goal of implementing reliable multi-path transport.
+
+We also add support for the data sequence mapping. In our implementation, we use:
+```
+     +---------------+---------------+-------+----------------------+
+     |                      Data ACK (4 octets)                     |
+     +--------------------------------------------------------------+
+     |                Data Sequence Number (4 octets)               |
+     +--------------------------------------------------------------+
+     |              Subflow Sequence Number (4 octets)              |
+     +-------------------------------+------------------------------+
+     |                Data-Level Length (4 octets)                  |
+     +-------------------------------+------------------------------+
+```
+
+The function of our data sequence mapping is detailed in the next section.
+
+
+
+### Data Sequence Mappings: 
+
+From the 8684 spec:
+
+> The Data Sequence Mapping specifies a mapping from the subflow sequence space to the data sequence space.  This is expressed in terms of starting sequence numbers for the subflow and the data level, and a length of bytes for which this mapping is valid.
+
+Basically, a mapping is a 3-tuple `(DSN, seq, len)` where the subflow is carrying bytes from `(DSN, DSN + len)` over sequence numbes `(seq, seq + len)`. The receiver must then reassemble these.
+
+Tracking these double, independent, and fungible indexes (they can change after a connection-level retransmission) is tricky and not clearly articulated in the spec. Our implementation balances logical simplicity and implementation ease against performance. 
+
+To understand the core issue, consider the contents of a potential subflow in an MPTCP connection. 
+
+
+```
+|----------|--------------------------------------------------------|
+| DSN:     | 1  2  3  4  5  6  7|11 12 13 14 15 16|23 24 24|25 26 26|
+|          |      mapping 1     |    mapping 2    |    m3  |   m4   |
+|----------|--------------------------------------------------------|
+| Seq:     | 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19|
+|----------|--------------------------------------------------------|
+| Packet:  |      1     |     2    |      3    |  4  |      5       |
+|----------|--------------------------------------------------------|
+```
+
+Whenever a new packet is sent, it is easy to compute the sequence number to assign to it. (this can be done by taking the value of `sendMax`). However, the TCP socket can decide to send packets that cross mapping boundaries or are wholly contained within one. This can happen due to the congestion control or flow control restrictions/demands. At that point, what DSN do you send? You need to map a continuous space (the sequence numbers) to a set of discrete bins (the mappings) to determine the appropriate DSN for the new packet. Mappings can be arbitrary sizes decided by the fairness algorithm, so it's a tricky discretization problem.
+
+While a binary search or other potentially more clever techniques exist, they run into issues with mapping eviction policies. As the packets are sent and acked, the seq numbers will increase continuously, but the DSNs will increase discontinuously. When the content of a mapping is fully acked, it's associated mapping must be completely evicted. This creates an additional level of complexity in terms of storing mappings. 
+
+Our solution uses three prongs:
+1. Conceptually: the TCP socket treats the DSN as a connection-level construct, and does not manipulate them. It merely sees the data passed in from a message queue, the associated DSNs, and then sends those downstream. Upon receipt of a DACK, it passes it up to the MPTCP via an atomic variable. It executes no logic on it. Likewise, the sequence number is a subflow-level construct, and the MPSock never sees them.
+
+On an implementation basis to solve the discretization problem:
+
+2. Keeping DSNBuffers inside TCPSocks that store the parallel DSNs for the data inside their actual data buffers. These have the same size, read, write, flush, and reset on the exact same behavior as the data buffer they shadow. They instead store the DSNs. Thus, `DSNBuffer[seq] = correct DSN` to map 1-1 the DSN to the (seq, byte) combination. It is constant time to access the correct DSN for a sequence number to associate, and evicts/resets naturally for acks and retransmissions.
+3.  Ensure that any and all buffers are only buffering content from one mapping at a time. We accomplish this by making liberal usage of message Queues, in which we place entire DSN-mapping packets, and then only read from them into buffers one mapping at a time. This way, no buffer needs to track a discontinuity in DSNs midway through it's contents. Instead, the mapping changes after the buffer is flushed.
+
+
+**Thus, the packet is the smallest unit of TCP/subflow level transfer, mappings are the smallest unit of data-level transfer**. I/O to the TCPSocks is done in terms of complete mappings.
+
+In particular: the sender MPSock will only write data to a TCPsock via dataQ, one mapping at a time. The TCPSock will pop from it in its run loop when it has finished processing the previous mapping. Thus, when it receives a new mapping, the buffer is empty. It will send packets with no mapping length (these are nominally "infinite length" mappings) until the final packet, where it sends the remaining bytes in the mapping (which is equal to the size of this packet). It can identify the final packet by when the `sendBase == sendMax` after writing to the packet byte[]. This behavior is a stretching of the data sequence mapping rules in 3.3.1, but is technically to spec. (In particular, sending a packet with no mapping size is an "infinite" mapping, which means that there is no length set in the mapping option. It does not state that you cannot terminate an "infinite' mapping, which is what we are doing). Once the entire mapping is acked: the sender can pull in another mapping to send, and the reciever can pass the completed mapping to a queue for the receiving MPSock to process.
+
+
+
+#### Fairness
+
+We have not yet implemented [[RFC6356]](https://datatracker.ietf.org/doc/html/rfc6356). Our current algorithm to allocate data to individual subflows attempts to equalize the number of mappings individual subflows have to process. 
+
+#### Retransmission
+
+We use the TCP's original fast retransmit/fast recovery for subflow level retransmission. 
+
+Connection-level retransmission is known as reinjection and is not well detailed in 3.3.6. It merely lists some options, only mentioning that the bottom line is that the sender must keep data until it has been data-acked (which is already implemented). There is no consensus reinjection protocol, so we're on our own.
+
+We delegate this responsibility to MPSock, because it has the highest-level perspective on the socket situation. Specifically, the sender MPSock, because the TCP paradigm is that the Sender makes decisions while the receiver only reflects its state.
+
+
+Reinjection here is meant to be as safe as possible. Upon failure, the MPSock assumes that everything that has been send but not Acked will never arrive and do a full reset of the senderBuffer, and resend down surviving subflows. The reason for a full reset is that upon failure, we don't know which DSNs disappear, so instead of waiting for multiple RTT's worth of feedback from the receiver in order to guess which DSNs will eventually get ACKed, we can proactively assume everything in flight is lost, regenerate all Data sequence mappings, and then resend everything. 
+
+This poses a second problem -- our design uses the TCP to order incoming mappings for the MPsock to pick up on. The dataQs from TCPsocks to MPsock can thus be thought of as a set of ordered lists (ordered on DSN and subflow seq) that MPSock is merging. These are functionally the "in-order-queues" detailed in 3.3.4. However, retransmission presents an issue where now the seq number of the retransmitted data is higher than the head of the dataQ, while the DSN is lower. This means that the DATA_ACK desired by MPSock is not guaranteed to be at the head,  as the sort is no longer guaranteed. Because of this, whatever data was in flight before the failure is not guaranteed to be useable without an "out-of-order queue", so it's all effectively lost anyways.
+
+The receiver needs to purge all dataQs. This lets the sender naturally restore the ordering of incoming data sequence mappings, which lets the receiver naturally decide where to resume accepting incoming data, resolving the head-of-line block.
+
+
+
+**Detection of Failure**
+We adopt a more conservative approach (outlined in 3.3.6) of waiting for a few retransmission failures; in short, this is more generous than regular TCP. 
+ 
+*Sender detection:*
+1. Upon every acknowledge in the senderBuffer, a lastModified variable associated with every TCPSock should be modified (maybe an atomic inside the TCPSenderSock?)
+2. Poll regularly if no update has been made within 3 seconds, we assume failure. Initiate subflow teardown
+
+*Receiver Detection*
+1. upon every push to dataQ in receiver, a lastmodified variable is modified
+2. poll regularly to see if no push has been made within 3 seconds. Initiate subflow teardown
+
+
+**Subflow Teardown**
+*Sender detects failure*
+1. Subflow sends a `MP_RST` with `MP_FASTCLOSE`. Signals that this is a subflow specific fast close (to the receiver, if it eventually receives. Ideally, the receiver should time out or recognize that the sublow has failed). This is hinted at in (2.6) in terms of rapidly closing a single subflow.
+2. Sender MPSock unmaps the subflow.
+3. Sender MPSock resets it's `senderBuffer` by rolling `sendMax` back to `sendBase`, and clears the dataQs to the other TCPSocks. The remaining buffered sockets should stop sending. 
+
+*Receiver detects failure (should happen nearly simultaneously because of the timer-based system)*
+1. Send a `MP_RST` with `MP_FASTCLOSE`. This is a safety policy (specified in 2.6)
+2. Receiver MPSock unmaps the subflow
+
+**Retransmission protocol**
+The issue now is that we need to void all the previous mappings without knowledge of what is in flight, and without the ability to know reliably what has been voided on the receiver side. The only way to do this is to signal the start of voiding.
+
+Retransmission data packets (starting from the sender's `sendBase` and then increasing until passing the previous `sendMax` should be sent with a `RST` flag enabled. As the fairness delegates them to individual subflows, individual subflows will know to void their buffers upon receipt. 
+
+*Sender Retransmission.*
+1. while the packet DSN is smaller than the pre-failure sendMax, send the packet regularly with an attached `RST` flag for reset.
+2. Once the pre-failure sendMax is passed, remove the `RST` flags and continue normal transmission. 
+
+*Receiver Retransmission Receipt*
+1. if a packet has a `RST` flag, the TCPReceiveSock should void the buffer and it's dataQ, then place data in normally. Set a flag that it is on retransmission mode.
+2. Deactivate the retransmission mode flag when it lacks a non-`RST` packet 
+
+This is untested, but I think it'll work. 
+
+
+
+### Discussion:
+These results indicate that our MPTCP succeeded in meeting design goal of gaining better bandwidth over a single TCP connection. Moreover, the higher variance on the 3 flow (which would require 7 independent threads to run) does indicate that our logic is working as anticipated.
+
+More robust testing would examine the effect of loss, as well as sending between different computers on the same LAN. Given the dependence of this implementation on CPU behavior, it would also be interesting to see the sensitivity to that factor.
+
+## Future work
+
+There is extensive opportunity for future work. 
+
+Within the confines of our architecture:
+1. Add Crypto/Tokens (this is a few steps short of effectively implementing TLS)
+2. Add Connection-level Reinjection
+3. Add a full fairness and joint CWND/RWND congestion computation (as detailed in 3.3.5)
+4. Add address/port advertisements via ADD_ADDR + corresponding automatic address removal
+5. Implementing Fallback
+
+Reimplementation:
+1. switching to locking and synchronization instead of relying on atomic integers and thread-safe datastructures
+2. Adding out-of-sequence caching on the receiver side
+3. bidirectional data transmission
+

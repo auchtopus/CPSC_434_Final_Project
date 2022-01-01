@@ -1,0 +1,92 @@
+# MPTCP 
+- Toy implementation of [[RFC8684](https://datatracker.ietf.org/doc/html/rfc8684.html)] over UDP for CPSC 434 Topics in Network Systems Final Project.
+- Contributors: Anthony Jiang, Brian Liu, Himnish Hunma
+
+
+
+### Simulation Instructions:
+1. Download and build (requires a java compiler):
+```
+git clone https://www.github.com/auchtopus/CPSC_434_Final_Project
+cd CPSC_434_Final_Project
+javac *.java
+```
+2. Open a second terminal, and `cd` to the directory
+3. In the second terminal, run `java Server 10000 0`. It should report: "`Server listening on port 4445`"
+4. in the first terminal, run `java Client 10000 [numPaths] 0` for whatever number of paths you choose.
+5. Wait a few seconds and the server terminal should report the summary: 
+
+
+### Server/Client CLI:
+
+```
+Client:
+java Client [bytesTransfer] [numPaths] [verbosity]
+
+    bytesTransfer:  bytes to transfer (default 10000)
+    numPaths:       number of paths to open (default 1)
+    verbosity:      whether to print messaging/debug 
+                    information. 0 for SILENT, 2 for FULL. (default 0)
+
+
+Server:
+java Server [bytesTransfer] [verbosity]
+
+    bytesTransfer:  bytes to transfer (default 10000)
+    verbosity:      whether to print messaging/debug information.
+                    0 for SILENT, 2 for FULL. (default 0)
+
+```
+
+Ensure that when you run, `bytesTransfer` is equal on both sides for profiling to work
+
+
+The server will listen on one port, and then open other ports as it receives more path connections automatically. 4445 is the listen port, then 4446, 4447, etc. open for new connections.
+
+The client will open more paths on individual ports (4444, then 8000, 8001, etc. etc.) depending on the number of connections. 
+
+
+### MPSock API:
+- unfinished (and likely not fully compliant with a published MPTCP implementation)
+
+### Supported features
+#### MPTCP Design Targets
+- [x] [[RFC8684](https://datatracker.ietf.org/doc/html/rfc8684)] TCP Compatibility (Unidirectional with partial handshakes, but fully complaint FC, Reno CC, Retransmission) build on Project 2 TCPSockets
+- [x] [[RFC6182](https://datatracker.ietf.org/doc/html/rfc6182#section-2.1)] Multipath + Reinjection. (The reinjection is not fully implemented; see here for a full discussion.)
+- [ ] [[RFC6356](https://datatracker.ietf.org/doc/html/rfc6356)] Fairness + "do no harm" (In progress)
+
+#### Protocol Features
+- [ ] Tokens
+- [ ] Crypto/handshake
+- [X] `MP_JOIN`
+- [X] `MP_CAPABLE`
+- [ ] Address Advertisement (In Progress)
+- [X] Data Sequence Mappings
+- [ ] Reinjection (In Progress) (In Progress, Issue #16, see )
+- [x] Congestion Control (Reno) and Flow control
+- [ ] Fairness 
+- [x] Teardown 
+
+
+
+## Results
+Even though our implementation is incomplete and we have limited time for testing, we did get preliminary (practically experimental) results. These numbers are much slower than true TCP sockets (which can hit the GBPS range locally), but this is a toy implementation not production code.
+
+We sent 10,000 Bytes locally from the Client to the Server. We tried 1 flow, 2 flow, and 3 flow, each with 10 runs. Tests conducted on a quad-core i5 MacBook Pro with 8 threads.
+
+```
+❯ java Server 10000 0
+Server listening on port 4445
+time elapsed:1130 | 8849.56 mbps | flows:3
+```
+
+The resulting bandwith are as follows:
+
+<img src = "./assets/MPTCP_Profiling.svg">
+
+| Flow Count | 1 Flow | 2 Flow | 3 Flow |
+| - | - | - | - |
+| Average mbps | 3573.765|	6316.038|	8719.099|
+
+
+These were tested with no loss because we have yet to implement that simulation feature.
