@@ -71,8 +71,8 @@ public class Server {
                 }
                 if (numBytes == targBytes) {
                     long elapse = System.currentTimeMillis() - startTime;
-                    System.out.println("time elapsed:" + elapse + "|"
-                            + Double.toString((double) targBytes / (double) elapse * 1000) + "mbps" + "|flows:"
+                    System.out.println("time elapsed:" + elapse + " | "
+                            + String.format("%.2f", (double) targBytes / (double) elapse * 1000 ) + " mbps" + " | flows:"
                             + mpSock.getNumConnections());
                     break;
                 }
@@ -81,7 +81,6 @@ public class Server {
             }
 
         }
-        System.out.println("this close!");
         mpSock.close();
     }
 
