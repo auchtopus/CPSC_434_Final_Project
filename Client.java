@@ -22,7 +22,7 @@ public class Client {
                 }
                 int bytesWritten = mpSock.write(message, 0, randSize);
                 System.out.println("wrote packet size : " + Integer.toString(bytesWritten));
-                i += randSize;
+                i += bytesWritten;
             }
             mpSock.close();
         } catch (Exception e) {

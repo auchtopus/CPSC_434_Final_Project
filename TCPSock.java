@@ -21,7 +21,7 @@ public abstract class TCPSock {
     int MAX_PAYLOAD_SIZE = MPTransport.MAX_PAYLOAD_SIZE;
     int MSS = 128;
     boolean DELAY = false;
-    public Verbose verboseState = Verbose.FULL;
+    public Verbose verboseState = Verbose.REPORT;
 
     /* services */
     Date timeService = new Date();
@@ -265,77 +265,77 @@ public abstract class TCPSock {
 
     void logSendAck(boolean goodAck) {
         // System.out.print("ACKPRINT");
-        if (goodAck) {
-            System.out.print(".");
-        } else {
-            System.out.print("?");
-        }
+        // if (goodAck) {
+        //     System.out.print(".");
+        // } else {
+        //     System.out.print("?");
+        // }
     }
 
     void logSender(MPTransport payload) {
-        if (verboseState == Verbose.REPORT) {
-            // System.out.print("SENDPRINT");
-            if (payload.getType() == MPTransport.SYN) {
-                System.out.print("S");
-            } else if (payload.getType() == MPTransport.FIN) {
-                System.out.print("F");
-            } else if (payload.getType() == MPTransport.DATA) {
-                if (payload.getSeqNum() + payload.getPayload().length == dataBuffer.getSendMax()) {
-                    System.out.print(".");
-                } else if (payload.getSeqNum() + payload.getPayload().length < dataBuffer.getSendMax()) {
-                    System.out.print("!");
-                }
-            } else if (payload.getType() == MPTransport.ACK) {
-                // System.out.print("ERROR");
-                ; // this function does not log!
-            }
-        }
+        // if (verboseState == Verbose.REPORT) {
+        //     // System.out.print("SENDPRINT");
+        //     if (payload.getType() == MPTransport.SYN) {
+        //         System.out.print("S");
+        //     } else if (payload.getType() == MPTransport.FIN) {
+        //         System.out.print("F");
+        //     } else if (payload.getType() == MPTransport.DATA) {
+        //         if (payload.getSeqNum() + payload.getPayload().length == dataBuffer.getSendMax()) {
+        //             System.out.print(".");
+        //         } else if (payload.getSeqNum() + payload.getPayload().length < dataBuffer.getSendMax()) {
+        //             System.out.print("!");
+        //         }
+        //     } else if (payload.getType() == MPTransport.ACK) {
+        //         // System.out.print("ERROR");
+        //         ; // this function does not log!
+        //     }
+        // }
 
     }
 
     void logReceive(MPTransport payload) {
-        if (verboseState == Verbose.REPORT) {
-            // System.out.print("RECEIVEPRINT");
-            if (payload.getType() == MPTransport.SYN) {
-                System.out.print("S");
-            } else if (payload.getType() == MPTransport.FIN) {
-                System.out.print("F");
-            } else if (payload.getType() == MPTransport.DATA) {
-                if (role == SENDER) {
-                    ;
-                } else if (role == RECEIVER) {
-                    if (payload.getSeqNum() == dataBuffer.getWrite()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("!");
-                    }
+        // if (verboseState == Verbose.REPORT) {
+        //     // System.out.print("RECEIVEPRINT");
+        //     if (payload.getType() == MPTransport.SYN) {
+        //         System.out.print("S");
+        //     } else if (payload.getType() == MPTransport.FIN) {
+        //         System.out.print("F");
+        //     } else if (payload.getType() == MPTransport.DATA) {
+        //         if (role == SENDER) {
+        //             ;
+        //         } else if (role == RECEIVER) {
+        //             if (payload.getSeqNum() == dataBuffer.getWrite()) {
+        //                 System.out.print(".");
+        //             } else {
+        //                 System.out.print("!");
+        //             }
 
-                } else if (role == LISTENER) {
+        //         } else if (role == LISTENER) {
 
-                }
+        //         }
 
-            } else if (payload.getType() == MPTransport.ACK) {
-                if (role == SENDER) {
-                    if (payload.getSeqNum() == dataBuffer.getSendBase()) {
-                        System.out.print("?");
-                    } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("ERROR");
-                    }
-                } else if (role == RECEIVER) {
-                    if (payload.getSeqNum() == dataBuffer.getWrite()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("?");
-                    }
+        //     } else if (payload.getType() == MPTransport.ACK) {
+        //         if (role == SENDER) {
+        //             if (payload.getSeqNum() == dataBuffer.getSendBase()) {
+        //                 System.out.print("?");
+        //             } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
+        //                 System.out.print(".");
+        //             } else {
+        //                 System.out.print("ERROR");
+        //             }
+        //         } else if (role == RECEIVER) {
+        //             if (payload.getSeqNum() == dataBuffer.getWrite()) {
+        //                 System.out.print(".");
+        //             } else {
+        //                 System.out.print("?");
+        //             }
 
-                } else if (role == LISTENER) {
+        //         } else if (role == LISTENER) {
 
-                }
+        //         }
 
-            }
-        }
+        //     }
+        // }
     }
 
 
