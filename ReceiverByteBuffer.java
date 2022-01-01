@@ -9,10 +9,10 @@ Invariants:
 
 */
 
-public class ReceiverByteBuffer extends Buffer{
+public final class ReceiverByteBuffer extends Buffer{
     byte[] buffer;
     int rp;
-    AtomicInteger wp;
+    public final AtomicInteger wp;
     int size;
     // need 0 < wp - rp < size
 
@@ -23,8 +23,9 @@ public class ReceiverByteBuffer extends Buffer{
         this.size = size;
     }
 
-    public int getWrite() {
+    public final int getWrite() {
         // returns ABSOLUTE write pointer index
+
         return wp.intValue();
     }
 
@@ -72,7 +73,7 @@ public class ReceiverByteBuffer extends Buffer{
         // Write INTO buffer
         int wrote = 0;
 
-        while (wrote < len && this.canWrite()) {
+        while (pos < len && this.canWrite()) {
 
             // if (wp == size){
 
@@ -90,7 +91,7 @@ public class ReceiverByteBuffer extends Buffer{
         // out to destBuf
         // read OUT 
         int read = 0;
-        while (read < len && this.canRead()) {
+        while (pos < len && this.canRead()) {
             // parentSock.logOutput("BUF READING: " + buffer[loc(rp)]);
 
             destBuf[pos] = buffer[loc(rp)];

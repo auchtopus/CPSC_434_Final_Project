@@ -8,6 +8,7 @@ import java.util.concurrent.BlockingQueue;
 import java.net.SocketTimeoutException;
 import java.io.IOException;
 import java.net.SocketException;
+import java.util.Arrays;    
 
 public abstract class TCPSock {
 
@@ -16,7 +17,7 @@ public abstract class TCPSock {
     final int RECEIVER = 1;
     final int LISTENER = 2;
     final int BUFFERSIZE = 600;
-    final int MAX_PACKET_SIZE = 500;
+    final int MAX_PACKET_SIZE = MPTransport.MAX_PACKET_SIZE;
     int MAX_PAYLOAD_SIZE = MPTransport.MAX_PAYLOAD_SIZE;
     int MSS = 128;
     boolean DELAY = false;
@@ -152,15 +153,20 @@ public abstract class TCPSock {
 
     /* Socket Functions */
     void receive() throws SocketTimeoutException, IOException {
+
+        // parse the incoming packet
         byte[] receiveData = new byte[MAX_PACKET_SIZE];
         DatagramPacket incomingPacket = new DatagramPacket(receiveData, receiveData.length);
         UDPSock.receive(incomingPacket);
         byte[] incomingPayload = incomingPacket.getData();
-        Integer incomingPort = incomingPacket.getPort();
+        // System.out.println("recv:" + Arrays.toString(incomingPayload));
+        // System.out.println("recv:" + incomingPayload.length);
         InetAddress incomingAddress = incomingPacket.getAddress();
         MPTransport incomingTransport = MPTransport.unpack(incomingPayload);
         ConnID incomingcID = new ConnID(incomingAddress, incomingTransport.getSrcPort(), this.addr,
                 incomingTransport.getDestPort());
+        // logOutput("psize:" + incomingTransport.getPayload().length);
+        // System.out.println(Arrays.toString(incomingTransport.getPayload()));
         handleReceive(incomingcID, incomingTransport);
         return;
     }
@@ -168,12 +174,15 @@ public abstract class TCPSock {
     Boolean sendSegment(ConnID cID, MPTransport payload) {
         logOutput("===== SEND SEGMENT STATE ======");
         printTransport(payload);
+        // logOutput("psize:" + payload.getPayload().length);
         printcID(cID);
         socketStatus();
         lastTransport = payload;
         timeSent = timeService.getTime();
         byte[] bytePayload = payload.pack();
         // Brian send!
+        // System.out.println("Send:" + Arrays.toString(bytePayload));
+        // System.out.println("Send:" +bytePayload.length);
         try {
             // payload = "hello!".getBytes();
             DatagramPacket packet = new DatagramPacket(bytePayload, bytePayload.length, cID.destAddr, cID.destPort);
@@ -193,25 +202,15 @@ public abstract class TCPSock {
             ;
         }
 
+        
+        logOutput("===============================");
         return true;
-
-        // logOutput("===============================");
         // logSender(payload);
 
     }
 
     void handleReceive(ConnID cID, MPTransport payload){};
 
-    int bindListen(int localPort) {
-        if (!mpSock.checkPort(localPort)) {
-            this.port = localPort;
-            this.state = State.CLOSED;
-            return 0;
-        } else {
-            return -1;
-        }
-
-    }
 
     void removeEstSocket(ConnID cID) {
     }
@@ -227,26 +226,19 @@ public abstract class TCPSock {
 
     public abstract void close();
 
-    public void refuse() {
-        logOutput("refusing!");
+    public void refuse(ConnID cID) {
+        logOutput("refusing! connection");
         MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
                 new byte[0]);
         sendSegment(cID, finTransport); // here
         return;
     }
 
-    public void refuse(ConnID cID) {
-        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, 0, 0, 0, DSEQ, 0,
-                new byte[0]);
-        sendSegment(cID, finTransport);
-
-    }
-
     /* Logging */
 
     void printTransport(MPTransport t) {
-        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|wsize:" + t.getWindow() + "|psize:"
-                + t.getPayload().length);
+        logOutput("type: " + t.getType() + "|seq:" + t.getSeqNum() + "|dsn:" + t.getDSeqNum() + "|wsize:" + t.getWindow() + "|psize:"
+                + t.getPayload().length + "|map:" + t.getLenMapping());
     }
 
     void printcID(ConnID cID) {
@@ -273,77 +265,77 @@ public abstract class TCPSock {
 
     void logSendAck(boolean goodAck) {
         // System.out.print("ACKPRINT");
-        if (goodAck) {
-            System.out.print(".");
-        } else {
-            System.out.print("?");
-        }
+        // if (goodAck) {
+        //     System.out.print(".");
+        // } else {
+        //     System.out.print("?");
+        // }
     }
 
     void logSender(MPTransport payload) {
-        if (verboseState == Verbose.REPORT) {
-            // System.out.print("SENDPRINT");
-            if (payload.getType() == MPTransport.SYN) {
-                System.out.print("S");
-            } else if (payload.getType() == MPTransport.FIN) {
-                System.out.print("F");
-            } else if (payload.getType() == MPTransport.DATA) {
-                if (payload.getSeqNum() + payload.getPayload().length == dataBuffer.getSendMax()) {
-                    System.out.print(".");
-                } else if (payload.getSeqNum() + payload.getPayload().length < dataBuffer.getSendMax()) {
-                    System.out.print("!");
-                }
-            } else if (payload.getType() == MPTransport.ACK) {
-                // System.out.print("ERROR");
-                ; // this function does not log!
-            }
-        }
+        // if (verboseState == Verbose.REPORT) {
+        //     // System.out.print("SENDPRINT");
+        //     if (payload.getType() == MPTransport.SYN) {
+        //         System.out.print("S");
+        //     } else if (payload.getType() == MPTransport.FIN) {
+        //         System.out.print("F");
+        //     } else if (payload.getType() == MPTransport.DATA) {
+        //         if (payload.getSeqNum() + payload.getPayload().length == dataBuffer.getSendMax()) {
+        //             System.out.print(".");
+        //         } else if (payload.getSeqNum() + payload.getPayload().length < dataBuffer.getSendMax()) {
+        //             System.out.print("!");
+        //         }
+        //     } else if (payload.getType() == MPTransport.ACK) {
+        //         // System.out.print("ERROR");
+        //         ; // this function does not log!
+        //     }
+        // }
 
     }
 
     void logReceive(MPTransport payload) {
-        if (verboseState == Verbose.REPORT) {
-            // System.out.print("RECEIVEPRINT");
-            if (payload.getType() == MPTransport.SYN) {
-                System.out.print("S");
-            } else if (payload.getType() == MPTransport.FIN) {
-                System.out.print("F");
-            } else if (payload.getType() == MPTransport.DATA) {
-                if (role == SENDER) {
-                    ;
-                } else if (role == RECEIVER) {
-                    if (payload.getSeqNum() == dataBuffer.getWrite()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("!");
-                    }
+        // if (verboseState == Verbose.REPORT) {
+        //     // System.out.print("RECEIVEPRINT");
+        //     if (payload.getType() == MPTransport.SYN) {
+        //         System.out.print("S");
+        //     } else if (payload.getType() == MPTransport.FIN) {
+        //         System.out.print("F");
+        //     } else if (payload.getType() == MPTransport.DATA) {
+        //         if (role == SENDER) {
+        //             ;
+        //         } else if (role == RECEIVER) {
+        //             if (payload.getSeqNum() == dataBuffer.getWrite()) {
+        //                 System.out.print(".");
+        //             } else {
+        //                 System.out.print("!");
+        //             }
 
-                } else if (role == LISTENER) {
+        //         } else if (role == LISTENER) {
 
-                }
+        //         }
 
-            } else if (payload.getType() == MPTransport.ACK) {
-                if (role == SENDER) {
-                    if (payload.getSeqNum() == dataBuffer.getSendBase()) {
-                        System.out.print("?");
-                    } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("ERROR");
-                    }
-                } else if (role == RECEIVER) {
-                    if (payload.getSeqNum() == dataBuffer.getWrite()) {
-                        System.out.print(".");
-                    } else {
-                        System.out.print("?");
-                    }
+        //     } else if (payload.getType() == MPTransport.ACK) {
+        //         if (role == SENDER) {
+        //             if (payload.getSeqNum() == dataBuffer.getSendBase()) {
+        //                 System.out.print("?");
+        //             } else if (payload.getSeqNum() > dataBuffer.getSendBase()) {
+        //                 System.out.print(".");
+        //             } else {
+        //                 System.out.print("ERROR");
+        //             }
+        //         } else if (role == RECEIVER) {
+        //             if (payload.getSeqNum() == dataBuffer.getWrite()) {
+        //                 System.out.print(".");
+        //             } else {
+        //                 System.out.print("?");
+        //             }
 
-                } else if (role == LISTENER) {
+        //         } else if (role == LISTENER) {
 
-                }
+        //         }
 
-            }
-        }
+        //     }
+        // }
     }
 
 

@@ -7,32 +7,17 @@ import java.io.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * <p>
- * Title: CPSC 433/533 Programming Assignment
- * </p>
- *
- * <p>
- * Description: Fishnet socket implementation
- * </p>
- *
- * <p>
- * Copyright: Copyright (c) 2006
- * </p>
- *
- * <p>
- * Company: Yale University
- * </p>
- *
- * @author Hao Wang
- * @version 1.0
- */
-
 public class TCPSendSock extends TCPSock implements Runnable {
 
     /* Send sock only */
     SenderByteBuffer dataBuffer;
     SenderIntBuffer dsnBuffer;
+
+    // tracking the status of the currently processing messaging
+    byte[] mappingDataBuffer;
+    int[] mappingDSNBuffer;
+    int dataLoaded = 0;
+    int mappingLen = 0;
 
     /*
      * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
@@ -42,40 +27,62 @@ public class TCPSendSock extends TCPSock implements Runnable {
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.port = this.mpSock.getPort();
+        this.role = SENDER;
     }
 
     public TCPSendSock(MPSock mpSock, BlockingQueue<Message> dataQ) {
+        super();
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.port = this.mpSock.getPort();
         this.dataQ = dataQ;
+        this.role = SENDER;
     }
 
     public void run() {
         while (true) {
             // handle incoming data
             Message mapping;
+
             if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
-                logOutput("Processing Queue element!");
-                try {
 
-                    mapping = dataQ.poll(10, TimeUnit.MILLISECONDS);
+                if (mappingLen == 0) {
+                    mapping = dataQ.poll();
+                    dataLoaded = 0;
+                    logOutput("dQ.poll:" + mapping.getSize());
+                    mappingLen = mapping.getSize();
 
-                    // update the dsn index
-                    int[] newDSN = new int[mapping.getSize()];
+                    mappingDSNBuffer = new int[mapping.getSize()];
                     for (int i = 0; i < mapping.getSize(); i++) {
-                        newDSN[i] = i + mapping.dsn;
+                        mappingDSNBuffer[i] = i;
                     }
-                    dsnBuffer.write(newDSN, 0, mapping.getSize());
 
-                    // update the actual data
-                    dataBuffer.write(mapping.data, 0, mapping.getSize());
-                    logOutput("sending Data");
-                    sendData();
-
-                } catch (InterruptedException e) {
-                    ;
+                    mappingDataBuffer = mapping.data;
                 }
+
+                // create the mirror dsn buffer; doing this outside for easier logic
+
+                while (dsnBuffer.canWrite() && dataLoaded < mappingLen) {
+
+                    // update dsnBuffer
+                    dsnBuffer.write(mappingDSNBuffer, dataLoaded, mappingLen);
+
+                    // update dataBuffer
+                    int wrote = dataBuffer.write(mappingDataBuffer, dataLoaded, mappingLen - dataLoaded);
+                    dataLoaded += wrote;
+                    sendData();
+                }
+
+
+                // logOutput("dL:" + dataLoaded + "mL:" + mappingLen);
+                if (dataLoaded == mappingLen) {
+                    // finished loading this current mapping into the buffer!
+                    // logOutput("finished mapping!");
+                    mappingLen = 0;
+                    dataLoaded = 0;
+                }
+                // update the dsn index
+
             }
 
             try {
@@ -88,6 +95,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
             // handle receieve
         }
+
     }
 
     public void addTimer(long deltaT, String methodName, String[] paramType, Object[] params) {
@@ -117,7 +125,6 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
         this.role = SENDER;
 
-        // TODO: configure timer
         return 0;
     }
 
@@ -197,26 +204,35 @@ public class TCPSendSock extends TCPSock implements Runnable {
     /* Transmission */
 
     void sendData() {
-        int newPayloadSize = getPayloadSize();
+        int newPayloadSize = getPayloadSize(); // only a getter, no contract!
 
         while (newPayloadSize > 0) {
-            // read through the databuffer index looking for incongruity
+            // TODO: use the dsnBuffer!
+
             int mapping = 0;
             // prepare the byte buffer
+
+            int[] payloadDsnBuffer = new int[newPayloadSize];
+            int dsn = dsnBuffer.getSendMax();
+            int dsnWritten = dsnBuffer.read(payloadDsnBuffer, 0, newPayloadSize);
+
             byte[] payloadBuffer = new byte[newPayloadSize];
-            int dataAck = dataBuffer.getSendMax();
+            int seq = dataBuffer.getSendMax();
             int payloadWritten = dataBuffer.read(payloadBuffer, 0, newPayloadSize);
+
+            // error check
             if (payloadWritten != newPayloadSize) {
                 logError("Write failure: payloadWritten: " + payloadWritten + " payloadSize" + newPayloadSize);
             }
-
-            if(dataBuffer.getUnsent() == 0){
+            socketStatus();
+            logOutput("unsent:" + dataBuffer.getUnsent());
+            if (dataBuffer.getUnsent() == 0) {
                 mapping = payloadWritten;
             }
 
             // retransmission
-            MPTransport dataTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.DATA, 0, 0, dataAck,
-                    DSEQ, mapping,
+            MPTransport dataTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.DATA, 0, 0, seq,
+                    dsn, mapping,
                     payloadBuffer); // CHANGE mapping flag based on len
 
             // add to the queue once
@@ -242,71 +258,52 @@ public class TCPSendSock extends TCPSock implements Runnable {
             switch (payload.getType()) {
                 case MPTransport.ACK: // we are sender and getting an ack
 
-                    if (this.role == RECEIVER) {
-                        logOutput("this should not happen?");
-                        // refuse();
-                    } else {
-                        int ackNum = payload.getSeqNum();
-                        sampleRTT = getRTT(ackNum);
-                        if (ackNum > dataBuffer.getSendBase()) {
-                            // extract this code
-                            if (ackNum == lastTransport.getSeqNum() + lastTransport.getPayload().length) {
-                                logOutput("SAMPLE! acknum" + ackNum + " targetseqnum:" + lastTransport.getSeqNum()
-                                        + "sendBase" + dataBuffer.getSendBase() + "len"
-                                        + lastTransport.getPayload().length);
+                    int ackNum = payload.getSeqNum();
+                    sampleRTT = getRTT(ackNum);
+                    if (ackNum > dataBuffer.getSendBase()) {
 
-                                estRTT = (long) (0.875 * estRTT + 0.125 * sampleRTT);
-                                devRTT = (long) (0.75 * devRTT + 0.25 * Math.abs(sampleRTT - estRTT));
-                                timeout = (int) (estRTT + 4 * devRTT);
-                                logOutput("new Timeout:" + timeout);
-                            }
-                            ackCounter = 0;
-                            int oldSendBase = dataBuffer.acknowledge(ackNum);
-                            logOutput("old sendBase: " + oldSendBase + " acknum: " + ackNum);
+                        // sampling...
+                        if (ackNum == lastTransport.getSeqNum() + lastTransport.getPayload().length) {
+                            sample(ackNum, sampleRTT);
+                        }
 
-                            if (oldSendBase == -1) {
-                                // bad sendbase update
-                                logError(
-                                        "bad sendbase update of: " + ackNum + " " + "sendMax: "
-                                                + this.dataBuffer.getSendMax());
-                            }
-                            updateAck(oldSendBase, ackNum, payload.getWindow(), sampleRTT);
+                        // update sendbase
+                        ackCounter = 0;
+                        int oldSendBase = dataBuffer.acknowledge(ackNum);
+                        dsnBuffer.acknowledge(ackNum);
+                        logOutput("old sendBase: " + oldSendBase + " acknum: " + ackNum);
+                        if (oldSendBase == -1) {
+                            logError(
+                                    "bad sendbase update of: " + ackNum + " " + "sendMax: "
+                                            + this.dataBuffer.getSendMax());
+                        }
+
+                        // update FC and CC
+                        updateAck(oldSendBase, ackNum, payload.getWindow(), sampleRTT);
+
+                        // update dack
+                        int dack = payload.getDSeqNum();
+                        if (mpSock.sendBuffer.acknowledge(dack) < 0) {
+                            // dacks behave cumulatively
+                            // upon bad dack: should be able to rely on the fast-retransmission of the
+                            // underlying TCPSock to manage this
+                        }
+                        sendData();
+                    } else if (ackNum == dataBuffer.getSendBase()) {
+                        if (dataBuffer.getSendBase() == dataBuffer.getSendMax()) {
+                            // window update
+                            RWND = payload.getWindow();
                             sendData();
-                        } else if (ackNum == dataBuffer.getSendBase()) {
-                            if (dataBuffer.getSendBase() == dataBuffer.getSendMax()) {
-                                // window update
-                                RWND = payload.getWindow();
-                                sendData();
-                                break;
-                            }
-                            logOutput("bad ack! " + payload.getSeqNum() + "sendBase: " + dataBuffer.getSendBase());
-                            ackCounter += 1;
-                            if (ackCounter == 3) {
-                                updateLoss();
-                                fastRetransmit();
-                            }
+                            break;
                         }
-
-                    }
-                    break;
-                case MPTransport.DATA: // we are receiver and getting a data
-                    if (this.role != RECEIVER) {
-                        refuse();
-                    } else {
-                        if (dataBuffer.getWrite() != payload.getSeqNum()) { // receieve a bad packet
-                            logOutput("out of sequence!! " + dataBuffer.getWrite() + " " + payload.getSeqNum());
-                            sendAck(false);
-                        } else { // receieve a good packet
-                            byte[] payloadBuffer = payload.getPayload();
-                            int bytesRead = dataBuffer.write(payloadBuffer, 0, payloadBuffer.length);
-                            if (bytesRead != payloadBuffer.length) {
-                                logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
-
-                            } else {
-                                sendAck(true);
-                            }
+                        logOutput("bad ack! " + payload.getSeqNum() + "sendBase: " + dataBuffer.getSendBase());
+                        ackCounter += 1;
+                        if (ackCounter == 3) {
+                            updateLoss();
+                            fastRetransmit();
                         }
                     }
+
                     break;
 
                 case MPTransport.FIN: // someone told us to terminate
@@ -358,7 +355,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
     /* releasse immediately (abortive shutdown) */
     public void release() {
-        refuse();
+        refuse(cID);
         state = State.FIN_SENT;
 
     }
@@ -399,6 +396,17 @@ public class TCPSendSock extends TCPSock implements Runnable {
     // }
 
     /* CC, FC, Reno, Cubic */
+
+    void sample(int ackNum, long sampleRTT) {
+        logOutput("SAMPLE! acknum" + ackNum + " targetseqnum:" + lastTransport.getSeqNum()
+                + "sendBase" + dataBuffer.getSendBase() + "len"
+                + lastTransport.getPayload().length);
+
+        estRTT = (long) (0.875 * estRTT + 0.125 * sampleRTT);
+        devRTT = (long) (0.75 * devRTT + 0.25 * Math.abs(sampleRTT - estRTT));
+        timeout = (int) (estRTT + 4 * devRTT);
+        logOutput("new Timeout:" + timeout);
+    }
 
     long getRTT(int newAck) {
         if (lastTransport != null && lastTransport.getSeqNum() + lastTransport.getPayload().length == newAck) {
@@ -494,16 +502,20 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
     int getPayloadSize() {
-        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" + Integer.toString(dataBuffer.getUnsent())
-                + "|:" + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
-        return Math.max(0, min(MAX_PAYLOAD_SIZE, 
-        dataBuffer.getUnsent(),
+        logOutput("mps:" + Integer.toString(MAX_PAYLOAD_SIZE) + "|unsent:" +
+                Integer.toString(dataBuffer.getUnsent())
+                + "|window:"
+                + Integer.toString(Math.min(CWND, RWND) - (dataBuffer.getSendMax() -
+                        dataBuffer.getSendBase())));
+        return Math.max(0, min(MAX_PAYLOAD_SIZE,
+                dataBuffer.getUnsent(),
                 Math.min(CWND, RWND) - (dataBuffer.getSendMax() - dataBuffer.getSendBase())));
     }
 
     void fastRetransmit() {
         // we can assume that everything in the air has been lost?
         dataBuffer.reset();
+        dsnBuffer.reset();
         sendData();
     }
 
@@ -527,48 +539,48 @@ public class TCPSendSock extends TCPSock implements Runnable {
      * @return int on success, the number of bytes written, which may be smaller
      *         than len; on failure, -1
      */
-    public int write(byte[] buf, int pos, int len) {
-        logOutput("===== Before write =====");
-        // dataBuffer.getState();
-        int bytesWrite = dataBuffer.write(buf, pos, len);
-        if (bytesWrite == -1) {
-            return -1;
-        }
-        sendData();
-        logOutput("===== After write  =====");
-        // dataBuffer.getState();
-        return bytesWrite;
-    }
+    // todo: determine if anybody even calls
+    // public int write(byte[] buf, int pos, int len) {
+    // logOutput("===== Before write =====");
+    // int bytesWrite = dataBuffer.write(buf, pos, len);
+    // if (bytesWrite == -1) {
+    // return -1;
+    // }
+    // sendData();
+    // logOutput("===== After write =====");
+    // return bytesWrite;
+    // }
 
-    /**
-     * Read from the socket up to len bytes into the buffer buf starting at position
-     * pos.
-     *
-     * @param buf byte[] the buffer
-     * @param pos int starting position in buffer
-     * @param len int number of bytes to read
-     * @return int on success, the number of bytes read, which may be smaller than
-     *         len; on failure, -1
-     */
-    public int read(byte[] buf, int pos, int len) {
-        boolean sendUpdate = false;
-        if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
-            // buffer out of space
-            sendUpdate = true;
+    // /**
+    // * Read from the socket up to len bytes into the buffer buf starting at
+    // position
+    // * pos.
+    // *
+    // * @param buf byte[] the buffer
+    // * @param pos int starting position in buffer
+    // * @param len int number of bytes to read
+    // * @return int on success, the number of bytes read, which may be smaller than
+    // * len; on failure, -1
+    // */
+    // public int read(byte[] buf, int pos, int len) {
+    // boolean sendUpdate = false;
+    // if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
+    // // buffer out of space
+    // sendUpdate = true;
 
-        }
+    // }
 
-        if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
-            logOutput("Receiver buffer cleared, no more data incoming");
-            state = State.CLOSED;
-            return 0;
-        }
-        logOutput("===== Before read  =====");
-        int bytesRead = dataBuffer.read(buf, pos, len);
-        logOutput("===== After read   =====");
+    // if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
+    // logOutput("Receiver buffer cleared, no more data incoming");
+    // state = State.CLOSED;
+    // return 0;
+    // }
+    // logOutput("===== Before read =====");
+    // int bytesRead = dataBuffer.read(buf, pos, len);
+    // logOutput("===== After read =====");
 
-        return bytesRead;
-    }
+    // return bytesRead;
+    // }
 
     public void socketStatus() {
         try {

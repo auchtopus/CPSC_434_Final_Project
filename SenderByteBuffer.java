@@ -2,7 +2,7 @@ import java.util.concurrent.atomic.*;
 
 public class SenderByteBuffer extends Buffer{
     byte[] buffer;
-    AtomicInteger sendBase;
+    volatile AtomicInteger sendBase;
     int sendMax; // write head; also the nextseqnum
     int wp;
     int size;
@@ -64,7 +64,7 @@ public class SenderByteBuffer extends Buffer{
         // in from srcBuf
         int wrote = 0;
 
-        while (wrote < len && this.canWrite()) {
+        while (pos < len && this.canWrite()) {
             buffer[loc(wp)] = srcBuf[pos];
             // parentSock.logOutput("BUF WRITING: wp: " + wp + " in val: " +srcBuf[pos] + " written: " + buffer[loc(wp)]);
             wrote++;
@@ -90,17 +90,21 @@ public class SenderByteBuffer extends Buffer{
     }
 
     public synchronized int acknowledge(int newSendBase){
-        if (newSendBase > sendMax){
+        if (newSendBase > sendMax || newSendBase < this.sendBase.get()){
             return -1;
         }
-        AtomicInteger oldSendBase = this.sendBase;
+        int oldSendBase = this.sendBase.intValue();
         this.sendBase.set(newSendBase);
-        return oldSendBase.intValue(); 
+        return oldSendBase; 
     }
 
     public int reset(){
         sendMax = sendBase.intValue();
         return sendMax;
     } 
+
+    public String toString(){
+        return "sb:" + sendBase.get() + "|sm:" + sendMax + "|wp:" + wp + "cw:" + canWrite();
+    }
 
 }

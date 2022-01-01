@@ -1,51 +1,38 @@
-import java.lang.*;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+
+import javax.sound.midi.Receiver;
+import javax.sound.sampled.SourceDataLine;
+
 import java.net.*;
 import java.io.*;
-
-/**
- * <p>
- * Title: CPSC 433/533 Programming Assignment
- * </p>
- *
- * <p>
- * Description: Fishnet TCP manager
- * </p>
- *
- * <p>
- * Copyright: Copyright (c) 2006
- * </p>
- *
- * <p>
- * Company: Yale University
- * </p>
- *
- * @author Hao Wanga
- * @version 1.0
- */
 
 public class MPSock extends TCPSock {
     final int SENDER = 0;
     final int EVER = 1;
 
-    private State state;
     int timeout = 1000;
     final int BUFFERSIZE = 1000;
     Date timeService = new Date();
     long timeSent;
     int numMessages = 0;
+
     // MPTCP
-    List<BlockingQueue<Message>> dataQList;
-    List<BlockingQueue<Message>> commandQList;
-    SenderByteBuffer sendBuffer;
-    ReceiverByteBuffer receiverBuffer;
+    Hashtable<ConnID, BlockingQueue<Message>> dataQMap;
+    Hashtable<ConnID, BlockingQueue<Message>> commandQMap;
+    public SenderByteBuffer sendBuffer;
+    public ReceiverByteBuffer receiverBuffer;
 
     // debug
     Verbose verboseState;
 
-    private byte[] buf;
+
+    // buffering for reading from the dataQ
+    byte[] mappingDataBuffer;
+    int[] mappingDSNBuffer;
+    int dataRead;
+    int mappingLen;
 
     HashMap<ConnID, TCPSock> estMap = new HashMap<ConnID, TCPSock>();
     HashMap<Integer, TCPSock> listenMap = new HashMap<Integer, TCPSock>();
@@ -54,8 +41,8 @@ public class MPSock extends TCPSock {
     public MPSock(InetAddress addr, int port) {
         this.addr = addr; // fishnet version
         this.port = port;
-        dataQList = new ArrayList<BlockingQueue<Message>>();
-        commandQList = new ArrayList<BlockingQueue<Message>>();
+        dataQMap = new Hashtable<ConnID, BlockingQueue<Message>>();
+        commandQMap = new Hashtable<ConnID, BlockingQueue<Message>>();
         verboseState = Verbose.FULL;
 
         // keep hashmap of port -> socket and track the state
@@ -78,12 +65,13 @@ public class MPSock extends TCPSock {
    
     // Establish a MPTCP connection
     public int connect(InetAddress destAddr, int destPort) {
-        ConnID cID = new ConnID(this.addr, this.port, destAddr, destPort);
+        // this is the declared "virtual" cID -- the actual send ports on both sides are not this
+        ConnID cID = new ConnID(this.addr, this.port, destAddr, destPort); 
         this.state = State.SYN_SENT;
         sendBuffer = new SenderByteBuffer(BUFFERSIZE);
         // establish a send socket
         BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
-        dataQList.add(dataQ);
+        dataQMap.put(cID, dataQ);
         TCPSendSock sendSock = new TCPSendSock(this, dataQ);
         sendSock.setCID(cID);
         logOutput("calling sendsock connect");
@@ -91,7 +79,12 @@ public class MPSock extends TCPSock {
         Runnable sendSockRunnable = (Runnable) sendSock;
         Thread sendSockThread = new Thread(sendSockRunnable);
         sendSockThread.start();
-        this.role = SENDER;
+
+        System.out.println();
+        this.state = State.SYN_SENT;
+
+        // configure the state for opened connections
+        
         // send SYN with MP_CAPABLE
         return 0;
     }
@@ -106,15 +99,17 @@ public class MPSock extends TCPSock {
             Message acceptMsg = new Message(Message.Command.ACCEPT);
             logOutput("adding accept");
             listenSock.commandQ.offer(acceptMsg);
-            assert listenSock.commandQ.peek() != null;
+            // assert listenSock.commandQ.peek() != null;
             // this needs to block!
+
+            receiverBuffer = new ReceiverByteBuffer(BUFFERSIZE);
+            // System.out.println("mp: " + receiverBuffer.wp);
         }
         return this; // return this MPSock as we only have one connection
     }
 
     int addSubflow(InetAddress destAddr, int destPort) {
-        TCPSendSock sendSock = new TCPSendSock(this);
-        sendSock.connect(destAddr, destPort); // initiate subflow connection
+        connect(destAddr, destPort); // initiate subflow connection
         return 0;
     }
 
@@ -144,6 +139,7 @@ public class MPSock extends TCPSock {
         return (TCPSendSock) estMap.get(cID);
     }
 
+
     TCPReceiveSock createEstSocket(ConnID cID) {
         ConnID reversecID = cID.reverse();
         if (estMap.containsKey(reversecID)) {
@@ -152,8 +148,8 @@ public class MPSock extends TCPSock {
             estMap.put(reversecID, null);
 
         }
-
         int lowestPort = this.port;
+
         DatagramSocket checkPort = null;
         while (true) {
             try {
@@ -170,15 +166,16 @@ public class MPSock extends TCPSock {
         logOutput("Calling createEstSocket" + ": " + newcID.toString());
         BlockingQueue<Message> dataQ = new LinkedBlockingQueue<Message>();
         BlockingQueue<Message> commandQ = new LinkedBlockingQueue<Message>();
-        this.dataQList.add(dataQ);
-        this.commandQList.add(commandQ);
+        this.dataQMap.put(newcID, dataQ);
+        this.commandQMap.put(newcID, commandQ);
         TCPReceiveSock newSock = new TCPReceiveSock(this, newcID.srcAddr, newcID.srcPort, dataQ, commandQ);
         newSock.setCID(newcID);
+        newSock.setState(State.ESTABLISHED);
         estMap.put(newcID, newSock);
-        newSock.bind(newcID.srcPort);
         newSock.dataBuffer = new ReceiverByteBuffer(BUFFERSIZE);
         newSock.dsnBuffer = new ReceiverIntBuffer(BUFFERSIZE);
-        newSock.setSocketTimeout(20);
+        newSock.setSocketTimeout(5);
+        newSock.socketStatus();
         assert (estMap.containsKey(cID));
 
         // run the new sock as a separate thread
@@ -218,6 +215,9 @@ public class MPSock extends TCPSock {
         if (bytesWrite == -1) {
             return -1;
         }
+        if (bytesWrite > 0){
+            logOutput(sendBuffer.toString());
+        }
         readToQ();
         // logOutput("===== After write =====");
         // buffer.getState();
@@ -227,32 +227,35 @@ public class MPSock extends TCPSock {
     /*
      * moves data into queue
      */
-    int computeFairness() {
+    ConnID computeFairness() {
+        // return the cID to handle the next mapping
         numMessages++;
-        return numMessages % dataQList.size();
+        List<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
+        return keyList.get(numMessages % dataQMap.size());
     }
 
-    public int read(byte[] buf, int pos, int len) {
-        return 0;
-    }
 
-    int readToQ() {
+    public int readToQ() {
         // create new mapping
         int mappingSize = Math.min(sendBuffer.getUnsent(), MPTransport.MAX_PAYLOAD_SIZE);
         byte[] mappingPayload = new byte[mappingSize];
         int dsn = sendBuffer.getSendMax();
-        sendBuffer.read(mappingPayload, 0, mappingSize);
-        Message mapping = new Message(mappingPayload, dsn, mappingSize);
-
-        // assign mapping
-        dataQList.get(computeFairness()).add(mapping);
+        int dataRead = sendBuffer.read(mappingPayload, 0, mappingSize); 
+        if (dataRead > 0){
+            assert dataRead == mappingSize;
+            Message mapping = new Message(mappingPayload, dsn, mappingSize);
+            // logOutput("map:dsn:" + dsn + "|declared size:"  + mappingSize + "|actual size:" + dataRead);
+            // assign mapping
+            dataQMap.get(computeFairness()).add(mapping);
+            logOutput("enQ:" + mapping.getDSN() + "|sz:" + mapping.getSize()+ "|buf:" + sendBuffer.toString() );
+        }
 
         return mappingSize;
     }
 
     /* Connection Closure */
 
-    public void close() {
+    public void  close() {
         // close all established TCPSock
         for (TCPSock sock : estMap.values()) {
             sock.close();
@@ -308,6 +311,74 @@ public class MPSock extends TCPSock {
         return (listenMap.containsKey(portQuery));
     }
 
+
+
+
+ /**
+     * Read to the application up to len bytes from the message queues. The write function then breaks data written into packets to send on each subflow.
+     * pos.
+     *
+     * @param buf byte[] the buffer to write from
+     * @param pos int starting position in buffer
+     * @param len int number of bytes to write
+     * @return int on success, the number of bytes written, which may be smaller
+     *         than len; on failure, -1
+     */
+    public int read(byte[] buf, int pos, int len) {
+
+        if (mappingLen > 0){
+            // read from the cur message
+            dataRead += receiverBuffer.write(mappingDataBuffer, dataRead, mappingLen - dataRead);
+            if (dataRead == mappingLen){
+                dataRead = 0;
+                mappingLen = 0;
+            }
+        }
+
+        
+        // logOutput("===== Before write =====");
+        // buffer.getState();
+        // peek all the blocks in the dataQlist and compare with DSN expected
+        int expectedDseq = receiverBuffer.getWrite();
+        // System.out.println("expdseq:" + expectedDseq);
+        ArrayList<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
+        boolean polled = true;
+        while (polled && receiverBuffer.canWrite()){
+            polled = false;
+            for (ConnID cID: keyList) {
+                BlockingQueue<Message> current = dataQMap.get(cID);
+                Message curMsgPeek = (Message) current.peek();
+                if (curMsgPeek != null && curMsgPeek.dsn == expectedDseq && mappingLen == 0) { //in order write to buffer
+                    logOutput("peek:"+ curMsgPeek);
+                    Message curMsg = (Message) current.poll();
+                    
+                    // load to local buffer
+                    mappingDataBuffer = curMsg.data;
+                    mappingLen = curMsg.getSize();
+                    dataRead = 0;
+
+                    dataRead += receiverBuffer.write(mappingDataBuffer, 0, curMsg.length);
+                    polled = true;
+
+                    if (dataRead == mappingLen){
+                        // resdt!
+                        dataRead = 0;
+                        mappingLen = 0;
+                    } else {
+                        break; // theoretically, this should preclude the mappingLen check, but it's doubled up for safety
+                    }
+                    
+                }
+            }
+        }
+
+        // 
+        int bytesRead = receiverBuffer.read(buf, 0, len);
+        // logOutput("===== After write  =====");
+        // buffer.getState();
+        return bytesRead;
+    }
+
     // method to print detials about a socket
     public void socketStatus(){
         if (role == SENDER){
@@ -317,33 +388,3 @@ public class MPSock extends TCPSock {
         }
     }
 }
-
-/**
- * Read to the application up to len bytes from the message queues. The write
- * function then breaks data written into packets to send on each subflow.
- * pos.
- *
- * @param buf byte[] the buffer to write from
- * @param pos int starting position in buffer
- * @param len int number of bytes to write
- * @return int on success, the number of bytes written, which may be smaller
- *         than len; on failure, -1
- */
-// public int read(byte[] buf, int pos, int len) {
-// // logOutput("===== Before write =====");
-// // buffer.getState();
-// // peek all the blocks in the dataQlist and compare with DSN expected
-// Iterator iterator = dataQList.iterator();
-// Integer expectedDseq = this.buffer.getWrite();
-// while(iterator.hasNext()) {
-// ;
-// }
-// int bytesWrite = buffer.write(buf, pos, len);
-// if (bytesWrite == -1) {
-// return -1;
-// }
-// readToQ();
-// // logOutput("===== After write =====");
-// // buffer.getState();
-// return bytesWrite;
-// }

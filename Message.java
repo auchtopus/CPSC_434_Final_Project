@@ -33,6 +33,9 @@ public  class Message {
     public Command getCommand(){
         return command;
     }
-    
+
+    public int getDSN() {
+        return this.dsn;
+    }
 
 }
