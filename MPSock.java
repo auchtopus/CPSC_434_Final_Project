@@ -28,6 +28,12 @@ public class MPSock extends TCPSock {
     Verbose verboseState;
 
 
+    // buffering for reading from the dataQ
+    byte[] mappingDataBuffer;
+    int[] mappingDSNBuffer;
+    int dataRead;
+    int mappingLen;
+
     HashMap<ConnID, TCPSock> estMap = new HashMap<ConnID, TCPSock>();
     HashMap<Integer, TCPSock> listenMap = new HashMap<Integer, TCPSock>();
     Queue<TCPSock> backlog = new LinkedList<TCPSock>();
@@ -234,12 +240,15 @@ public class MPSock extends TCPSock {
         int mappingSize = Math.min(sendBuffer.getUnsent(), MPTransport.MAX_PAYLOAD_SIZE);
         byte[] mappingPayload = new byte[mappingSize];
         int dsn = sendBuffer.getSendMax();
-        int dataRead = sendBuffer.read(mappingPayload, 0, mappingSize);
-        Message mapping = new Message(mappingPayload, dsn, mappingSize);
-        // logOutput("map:dsn:" + dsn + "|declared size:"  + mappingSize + "|actual size:" + dataRead);
-
-        // assign mapping
-        dataQMap.get(computeFairness()).add(mapping);
+        int dataRead = sendBuffer.read(mappingPayload, 0, mappingSize); 
+        if (dataRead > 0){
+            assert dataRead == mappingSize;
+            Message mapping = new Message(mappingPayload, dsn, mappingSize);
+            // logOutput("map:dsn:" + dsn + "|declared size:"  + mappingSize + "|actual size:" + dataRead);
+            // assign mapping
+            dataQMap.get(computeFairness()).add(mapping);
+            logOutput("enQ:" + mapping.getDSN() + "|sz:" + mapping.getSize()+ "|buf:" + sendBuffer.toString() );
+        }
 
         return mappingSize;
     }
@@ -316,6 +325,17 @@ public class MPSock extends TCPSock {
      *         than len; on failure, -1
      */
     public int read(byte[] buf, int pos, int len) {
+
+        if (mappingLen > 0){
+            // read from the cur message
+            dataRead += receiverBuffer.write(mappingDataBuffer, dataRead, mappingLen - dataRead);
+            if (dataRead == mappingLen){
+                dataRead = 0;
+                mappingLen = 0;
+            }
+        }
+
+        
         // logOutput("===== Before write =====");
         // buffer.getState();
         // peek all the blocks in the dataQlist and compare with DSN expected
@@ -323,24 +343,36 @@ public class MPSock extends TCPSock {
         // System.out.println("expdseq:" + expectedDseq);
         ArrayList<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
         boolean polled = true;
-        while (polled){
+        while (polled && receiverBuffer.canWrite()){
             polled = false;
             for (ConnID cID: keyList) {
                 BlockingQueue<Message> current = dataQMap.get(cID);
-                // logOutput("read cID:"+ cID.toString());
                 Message curMsgPeek = (Message) current.peek();
-                // if (curMsgPeek != null){
-                //     logOutput("dsn:" + curMsgPeek.getDSN());
-                // }
-                if (curMsgPeek != null && curMsgPeek.dsn == expectedDseq) { //in order write to buffer
+                if (curMsgPeek != null && curMsgPeek.dsn == expectedDseq && mappingLen == 0) { //in order write to buffer
                     logOutput("peek:"+ curMsgPeek);
                     Message curMsg = (Message) current.poll();
-                    int bytesWritten = receiverBuffer.write(curMsg.data, 0, curMsg.length);
-                    logOutput("wrote:" + bytesWritten);
+                    
+                    // load to local buffer
+                    mappingDataBuffer = curMsg.data;
+                    mappingLen = curMsg.getSize();
+                    dataRead = 0;
+
+                    dataRead += receiverBuffer.write(mappingDataBuffer, 0, curMsg.length);
                     polled = true;
+
+                    if (dataRead == mappingLen){
+                        // resdt!
+                        dataRead = 0;
+                        mappingLen = 0;
+                    } else {
+                        break; // theoretically, this should preclude the mappingLen check, but it's doubled up for safety
+                    }
+                    
                 }
             }
         }
+
+        // 
         int bytesRead = receiverBuffer.read(buf, 0, len);
         // logOutput("===== After write  =====");
         // buffer.getState();

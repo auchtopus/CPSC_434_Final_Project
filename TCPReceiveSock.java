@@ -15,6 +15,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     ReceiverByteBuffer dataBuffer;
     ReceiverIntBuffer dsnBuffer;
 
+    // window Updater
+    
+
     public TCPReceiveSock(MPSock mpSock, InetAddress addr, int port, BlockingQueue<Message> dataQ,
             BlockingQueue<Message> commandQ) {
         ///
@@ -59,7 +62,12 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             } catch (NullPointerException e) {
                 ;
             }
-
+            
+            // if (activeQ && dataQ.peek() == null){
+            //     sendWindowUpdateRT(targAck); // TODO: here!
+            //     activeQ = false;
+            // }
+            
         }
     }
 
@@ -254,6 +262,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 // logOutput(Boolean.toString(this.dataQ.offer(mapping)));
                                 this.dataQ.offer(mapping);
                                 assert (dataQ.peek() != null);
+                                // activeQ = true;
                             }
                             sendAck(true);
                         }
@@ -364,32 +373,6 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
      * @return int on success, the number of bytes read, which may be smaller than
      * len; on failure, -1
      */
-    public int read(byte[] buf, int pos, int len) {
-        boolean sendUpdate = false;
-        if (state == State.ESTABLISHED && !dataBuffer.canWrite()) {
-            // buffer out of space
-            sendUpdate = true;
-
-        }
-
-        if (state == State.TIME_WAIT && !dataBuffer.canRead()) {
-            logOutput("Receiver buffer cleared, no more data incoming");
-            state = State.CLOSED;
-            return 0;
-        }
-        // dataBuffer.getState();
-        logOutput("===== Before read  =====");
-        int bytesRead = dataBuffer.read(buf, pos, len);
-        logOutput("===== After read   =====");
-        // dataBuffer.getState();
-
-        if (sendUpdate) {
-            int currAck = dataBuffer.getWrite();
-            sendWindowUpdateRT(currAck);
-        }
-
-        return bytesRead;
-    }
 
     public void socketStatus() {
         try {
