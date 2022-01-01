@@ -24,6 +24,10 @@ public class SenderIntBuffer extends Buffer {
         return sendMax;
     }
 
+    public int getSendMaxVal(){
+        return buffer[loc(sendMax)];
+    }
+
     public int getWrite() {
         return wp;
     }

@@ -24,6 +24,7 @@ public class SenderByteBuffer extends Buffer {
         return sendMax;
     }
 
+
     public int getWrite() {
         return wp;
     }

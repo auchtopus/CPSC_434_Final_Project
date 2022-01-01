@@ -21,7 +21,8 @@ public abstract class TCPSock {
     int MAX_PAYLOAD_SIZE = MPTransport.MAX_PAYLOAD_SIZE;
     int MSS = 128;
     boolean DELAY = false;
-    public Verbose verboseState = Verbose.REPORT;
+    public Verbose verboseState = Verbose.SILENT;
+    
 
     /* services */
     Date timeService = new Date();
@@ -91,6 +92,8 @@ public abstract class TCPSock {
     public enum Verbose {
         SILENT, REPORT, FULL
     }
+
+    public Verbose[] verboseMap= {Verbose.SILENT, Verbose.REPORT, Verbose.FULL};
 
     public TCPSock() {
         ;
@@ -253,6 +256,7 @@ public abstract class TCPSock {
     }
 
     void log(String output, PrintStream stream) {
+
         if (this.verboseState == Verbose.FULL) {
             stream.println(this.addr + ":" + this.port + ": " + output);
         } else if (this.verboseState == Verbose.REPORT) {

@@ -18,25 +18,31 @@ public class TCPSendSock extends TCPSock implements Runnable {
     int[] mappingDSNBuffer;
     int dataLoaded = 0;
     int mappingLen = 0;
+    int mappingDSN = 0;
 
     /*
      * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
      */
-    public TCPSendSock(MPSock mpSock) {
-        super();
-        this.mpSock = mpSock;
-        this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
-        this.port = this.mpSock.getPort();
-        this.role = SENDER;
-    }
 
-    public TCPSendSock(MPSock mpSock, BlockingQueue<Message> dataQ) {
+    public TCPSendSock(MPSock mpSock, BlockingQueue<Message> dataQ, Verbose verboseState) {
         super();
         this.mpSock = mpSock;
         this.addr = this.mpSock.getAddr(); // here - to be hardcoded during creation of socket
         this.port = this.mpSock.getPort();
         this.dataQ = dataQ;
         this.role = SENDER;
+        this.verboseState = verboseState;
+    }
+
+
+    public TCPSendSock(MPSock mpSock, InetAddress srcAddr, int srcPort, BlockingQueue<Message> dataQ, Verbose verboseState) {
+        super();
+        this.mpSock = mpSock;
+        this.addr = srcAddr; // here - to be hardcoded during creation of socket
+        this.port = srcPort;
+        this.dataQ = dataQ;
+        this.role = SENDER;
+        this.verboseState = verboseState;
     }
 
     public void run() {
@@ -51,10 +57,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
                     dataLoaded = 0;
                     logOutput("dQ.poll:" + mapping.getSize());
                     mappingLen = mapping.getSize();
+                    mappingDSN = mapping.getDSN();
 
                     mappingDSNBuffer = new int[mapping.getSize()];
                     for (int i = 0; i < mapping.getSize(); i++) {
-                        mappingDSNBuffer[i] = i;
+                        mappingDSNBuffer[i] = i + mappingDSN;
                     }
 
                     mappingDataBuffer = mapping.data;
@@ -127,7 +134,9 @@ public class TCPSendSock extends TCPSock implements Runnable {
         return 0;
     }
 
+
     int finishHandshakeSender(ConnID cID, MPTransport ackTransport) {
+
         logOutput("input: " + ackTransport.getSeqNum() + " synSeq " + synSeq);
         if (ackTransport.getSeqNum() == synSeq) {
             estRTT = timeService.getTime() - timeSent;
@@ -212,7 +221,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
             // prepare the byte buffer
 
             int[] payloadDsnBuffer = new int[newPayloadSize];
-            int dsn = dsnBuffer.getSendMax();
+            int dsn = dsnBuffer.getSendMaxVal();
             int dsnWritten = dsnBuffer.read(payloadDsnBuffer, 0, newPayloadSize);
 
             byte[] payloadBuffer = new byte[newPayloadSize];
@@ -259,6 +268,8 @@ public class TCPSendSock extends TCPSock implements Runnable {
 
                     int ackNum = payload.getSeqNum();
                     sampleRTT = getRTT(ackNum);
+                    int dack = payload.getDSeqNum();
+
                     if (ackNum > dataBuffer.getSendBase()) {
 
                         // sampling...
@@ -281,15 +292,12 @@ public class TCPSendSock extends TCPSock implements Runnable {
                         updateAck(oldSendBase, ackNum, payload.getWindow(), sampleRTT);
 
                         // update dack
-                        int dack = payload.getDSeqNum();
-                        if (mpSock.sendBuffer.acknowledge(dack) < 0) {
-                            // dacks behave cumulatively
-                            // upon bad dack: should be able to rely on the fast-retransmission of the
-                            // underlying TCPSock to manage this
-                        }
+
+
                         sendData();
                     } else if (ackNum == dataBuffer.getSendBase()) {
                         if (dataBuffer.getSendBase() == dataBuffer.getSendMax()) {
+                            logOutput("window update");
                             // window update
                             RWND = payload.getWindow();
                             sendData();

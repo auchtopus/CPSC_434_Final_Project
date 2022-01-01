@@ -6,9 +6,10 @@ public class Message {
     Integer dsn;
     byte[] data;
     Integer length;
+    ConnID cID;
 
     enum Command {
-        ACCEPT, CLOSE
+        ACCEPT, CLOSE, UPDATE_WINDOW
     }
 
     Command command;
@@ -20,12 +21,25 @@ public class Message {
 
     };
 
+    public Message(byte[] data, Integer dsn, Integer length, ConnID cID) {
+        this.data = data;
+        this.dsn = dsn;
+        this.length = length;
+        this.cID = cID;
+
+    };
+
     public Message(Integer dack) {
         this.dack = dack;
     }
 
     public Message(Command command) {
         this.command = command;
+    }
+
+    public Message(Command command, int dack){
+        this.command = command;
+        this.dack = dack;
     }
 
     public int getSize() {
