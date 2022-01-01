@@ -97,7 +97,7 @@ public class MPSock extends TCPSock {
             // this needs to block!
 
             receiverBuffer = new ReceiverByteBuffer(BUFFERSIZE);
-            System.out.println("mp: " + receiverBuffer.wp);
+            // System.out.println("mp: " + receiverBuffer.wp);
         }
         return this; // return this MPSock as we only have one connection
     }
@@ -208,6 +208,9 @@ public class MPSock extends TCPSock {
         int bytesWrite = sendBuffer.write(buf, pos, len);
         if (bytesWrite == -1) {
             return -1;
+        }
+        if (bytesWrite > 0){
+            logOutput(sendBuffer.toString());
         }
         readToQ();
         // logOutput("===== After write =====");
@@ -330,10 +333,10 @@ public class MPSock extends TCPSock {
                 //     logOutput("dsn:" + curMsgPeek.getDSN());
                 // }
                 if (curMsgPeek != null && curMsgPeek.dsn == expectedDseq) { //in order write to buffer
-                    System.out.println("peek:"+ curMsgPeek);
+                    logOutput("peek:"+ curMsgPeek);
                     Message curMsg = (Message) current.poll();
                     int bytesWritten = receiverBuffer.write(curMsg.data, 0, curMsg.length);
-                    System.out.println("wrote:" + bytesWritten);
+                    logOutput("wrote:" + bytesWritten);
                     polled = true;
                 }
             }

@@ -103,4 +103,8 @@ public class SenderByteBuffer extends Buffer{
         return sendMax;
     } 
 
+    public String toString(){
+        return "sb:" + sendBase.get() + "|sm:" + sendMax + "|wp:" + wp + "cw:" + canWrite();
+    }
+
 }

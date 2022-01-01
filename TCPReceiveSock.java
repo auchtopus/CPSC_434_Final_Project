@@ -165,7 +165,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     }
 
     public int sendAck(boolean goodAck) { // no timer needed on acks
-        System.out.println("tcp: " + mpSock.receiverBuffer.wp);
+        // System.out.println("tcp: " + mpSock.receiverBuffer.wp);
         MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0, dataBuffer.getAvail(),
                 dataBuffer.getWrite(), mpSock.receiverBuffer.getWrite(), 0, new byte[0]);
         logOutput("AVAIL: " + dataBuffer.getAvail());
