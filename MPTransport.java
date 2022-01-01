@@ -14,7 +14,7 @@ public class MPTransport {
 
     public static final int MAX_PACKET_SIZE = 500;
     public static final int HEADER_SIZE = 28;
-    public static final int MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - HEADER_SIZE; // This is because the payload size 
+    public static final int MAX_PAYLOAD_SIZE = MAX_PACKET_SIZE - HEADER_SIZE; // This is because the payload size
     public static final int MAX_PORT_NUM = 65535; // port numbers range from 0 to 255
 
     public static final int SYN = 0;
@@ -44,7 +44,8 @@ public class MPTransport {
      * @param seqNum   The sequence number of the packet
      * @param payload  The payload of the packet.
      */
-    public MPTransport(int srcPort, int destPort, int type, int mpType, int window, int seqNum, int dSeqNum, int mapping, byte[] payload)
+    public MPTransport(int srcPort, int destPort, int type, int mpType, int window, int seqNum, int dSeqNum,
+            int mapping, byte[] payload)
             throws IllegalArgumentException {
         // System.out.print(srcPort);
         // System.out.print(destPort);
@@ -121,13 +122,14 @@ public class MPTransport {
         return this.mpType;
     }
 
-    public int getLenMapping(){
+    public int getLenMapping() {
         return this.mapping;
     }
+
     /**
      * Convert the MPTransport packet object into a byte array for sending over the
      * wire. Format: source port = 2 byte destination port = 2 byte type = 1 byte
-     * mpType = 1 byte window size = 4 bytes sequence number = 4 bytes 
+     * mpType = 1 byte window size = 4 bytes sequence number = 4 bytes
      * dSequence number = 4 bytes packet length = 1 byte
      * payload <= MAX_PAYLOAD_SIZE bytes
      * 
@@ -192,7 +194,8 @@ public class MPTransport {
         byteStream.write(mappingByteArray, 0, Math.min(mappingByteArray.length, 4));
 
         // here!
-        // System.out.println("HEADER_SIZE + this.payload.length" + Integer.toString(HEADER_SIZE + this.payload.length));
+        // System.out.println("HEADER_SIZE + this.payload.length" +
+        // Integer.toString(HEADER_SIZE + this.payload.length));
 
         // write 2 bytes for packet size
         byte[] packetSizeByteArray = (BigInteger.valueOf(HEADER_SIZE + this.payload.length)).toByteArray();
@@ -202,7 +205,6 @@ public class MPTransport {
         }
         byteStream.write(packetSizeByteArray, 0, Math.min(packetSizeByteArray.length, 2));
 
-
         // write the payload
         byteStream.write(this.payload, 0, this.payload.length);
 
@@ -210,7 +212,8 @@ public class MPTransport {
     }
 
     /**
-     * Unpacks a byte array to create a MPTransport object Assumes the array has been
+     * Unpacks a byte array to create a MPTransport object Assumes the array has
+     * been
      * formatted using pack method in MPTransport
      * 
      * @param packet String representation of the MPTransport packet
@@ -262,7 +265,6 @@ public class MPTransport {
         int mapping = (new BigInteger(mappingByteArray)).intValue();
 
         // int packetLength = byteStream.read();
-
 
         byte[] packetSizeByteArray = new byte[2];
         if (byteStream.read(packetSizeByteArray, 0, 2) != 2) {

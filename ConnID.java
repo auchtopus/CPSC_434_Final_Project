@@ -33,17 +33,17 @@ class ConnID {
 
     @Override
     public int hashCode() {
-        return Objects.hash(this.srcAddr.toString() + Integer.toString(srcPort) + this.destAddr.toString() + Integer.toString(destPort));
+        return Objects.hash(this.srcAddr.toString() + Integer.toString(srcPort) + this.destAddr.toString()
+                + Integer.toString(destPort));
     }
 
     @Override
-    public String toString(){
-        return "sA:" + this.srcAddr.toString() + " sP:" + Integer.toString(this.srcPort) + " dA:" + this.destAddr.toString() + " dP:" + Integer.toString(this.destPort);
+    public String toString() {
+        return "sA:" + this.srcAddr.toString() + " sP:" + Integer.toString(this.srcPort) + " dA:"
+                + this.destAddr.toString() + " dP:" + Integer.toString(this.destPort);
     }
 
-    public ConnID reverse(){
+    public ConnID reverse() {
         return new ConnID(this.destAddr, this.destPort, this.srcAddr, this.srcPort);
     }
 }
-
-

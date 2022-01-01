@@ -9,7 +9,7 @@ Invariants:
 
 */
 
-public class ReceiverIntBuffer extends Buffer{
+public class ReceiverIntBuffer extends Buffer {
     int[] buffer;
     int rp;
     AtomicInteger wp;
@@ -37,7 +37,6 @@ public class ReceiverIntBuffer extends Buffer{
         // returns ABSOLUTE read pointer
         return rp;
     }
-
 
     public int getUnsent() {
         return -1;
@@ -88,7 +87,7 @@ public class ReceiverIntBuffer extends Buffer{
 
     public int read(int[] destBuf, int pos, int len) {
         // out to destBuf
-        // read OUT 
+        // read OUT
         int read = 0;
         while (pos < len && this.canRead()) {
             // parentSock.logOutput("BUF READING: " + buffer[loc(rp)]);

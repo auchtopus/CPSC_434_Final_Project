@@ -1,6 +1,6 @@
 import java.util.concurrent.atomic.*;
 
-public class SenderByteBuffer extends Buffer{
+public class SenderByteBuffer extends Buffer {
     byte[] buffer;
     volatile AtomicInteger sendBase;
     int sendMax; // write head; also the nextseqnum
@@ -16,47 +16,48 @@ public class SenderByteBuffer extends Buffer{
         this.size = size;
     }
 
-    public int getSendBase(){
+    public int getSendBase() {
         return sendBase.intValue();
     }
 
-    public int getSendMax(){
+    public int getSendMax() {
         return sendMax;
     }
 
-    public int getWrite(){
+
+    public int getWrite() {
         return wp;
     }
-    public int getRead(){
+
+    public int getRead() {
         return -1;
     }
-
 
     public boolean canWrite() {
         return wp < sendBase.intValue() + this.size;
     }
 
     public boolean canRead() {
-        return sendMax < wp; 
+        return sendMax < wp;
     }
 
     public int loc(int ptr) {
         return ptr % size;
     }
-    
-    public int getAvail(){
-        return this.size - (wp - sendBase.intValue()); 
+
+    public int getAvail() {
+        return this.size - (wp - sendBase.intValue());
     }
 
-    public int getSize(){
+    public int getSize() {
         return -1;
     }
-    
-    public int getUnsent(){
+
+    public int getUnsent() {
         return wp - sendMax;
     }
 
-    public int getUnAcked(){
+    public int getUnAcked() {
         return sendMax - sendBase.intValue();
     }
 
@@ -66,7 +67,8 @@ public class SenderByteBuffer extends Buffer{
 
         while (pos < len && this.canWrite()) {
             buffer[loc(wp)] = srcBuf[pos];
-            // parentSock.logOutput("BUF WRITING: wp: " + wp + " in val: " +srcBuf[pos] + " written: " + buffer[loc(wp)]);
+            // parentSock.logOutput("BUF WRITING: wp: " + wp + " in val: " +srcBuf[pos] + "
+            // written: " + buffer[loc(wp)]);
             wrote++;
             wp++;
             pos++;
@@ -81,29 +83,30 @@ public class SenderByteBuffer extends Buffer{
         while (read < len && this.canRead()) {
 
             destBuf[pos] = buffer[loc(sendMax)];
-            // parentSock.logOutput("BUF READING: " + buffer[loc(sendMax)] + " to destbuf pos " + pos + " val: " + destBuf[pos]);
+            // parentSock.logOutput("BUF READING: " + buffer[loc(sendMax)] + " to destbuf
+            // pos " + pos + " val: " + destBuf[pos]);
             sendMax++;
             pos++;
-            read++;   
+            read++;
         }
         return read;
     }
 
-    public synchronized int acknowledge(int newSendBase){
-        if (newSendBase > sendMax || newSendBase < this.sendBase.get()){
+    public synchronized int acknowledge(int newSendBase) {
+        if (newSendBase > sendMax || newSendBase < this.sendBase.get()) {
             return -1;
         }
         int oldSendBase = this.sendBase.intValue();
         this.sendBase.set(newSendBase);
-        return oldSendBase; 
+        return oldSendBase;
     }
 
-    public int reset(){
+    public int reset() {
         sendMax = sendBase.intValue();
         return sendMax;
-    } 
+    }
 
-    public String toString(){
+    public String toString() {
         return "sb:" + sendBase.get() + "|sm:" + sendMax + "|wp:" + wp + "cw:" + canWrite();
     }
 

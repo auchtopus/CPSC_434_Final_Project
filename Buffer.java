@@ -8,19 +8,19 @@ public class Buffer {
         return 0;
     }
 
-    public int getWrite(){
+    public int getWrite() {
         return 0;
     }
 
-    public int getRead(){
+    public int getRead() {
         return 0;
     }
 
-    public boolean canWrite(){
+    public boolean canWrite() {
         return true;
     }
 
-    public boolean canRead(){
+    public boolean canRead() {
         return true;
     }
 

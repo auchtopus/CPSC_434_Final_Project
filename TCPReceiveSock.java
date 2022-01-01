@@ -4,7 +4,6 @@ import java.net.*;
 import java.io.*;
 import java.util.concurrent.BlockingQueue;
 
-
 public class TCPReceiveSock extends TCPSock implements Runnable {
 
     /* Listen socket only */
@@ -16,12 +15,11 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     ReceiverIntBuffer dsnBuffer;
 
     // window Updater
-    
 
     public TCPReceiveSock(MPSock mpSock, InetAddress addr, int port, BlockingQueue<Message> dataQ,
-            BlockingQueue<Message> commandQ) {
+            BlockingQueue<Message> commandQ, Verbose verboseState) {
         ///
-        super(); 
+        super();
         this.mpSock = mpSock;
         this.addr = addr;
         this.port = port;
@@ -34,6 +32,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        this.verboseState = verboseState;
     }
 
     public void run() { // shared by listen socket and establish sockets
@@ -42,14 +41,16 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             // socketStatus();
             if (commandQ.peek() != null) { //
                 // process commands
-                Message.Command command = commandQ.poll().getCommand();
+                Message command = commandQ.poll();
 
-                switch (command) {
-                case ACCEPT:
+                switch (command.command) {
+                    case ACCEPT:
                         this.accept();
                         break;
                     case CLOSE:
                         break;
+                    case UPDATE_WINDOW:
+                        sendWindowUpdateRT(command.dack);
                 }
             }
             try {
@@ -62,12 +63,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
             } catch (NullPointerException e) {
                 ;
             }
-            
-            // if (activeQ && dataQ.peek() == null){
-            //     sendWindowUpdateRT(targAck); // TODO: here!
-            //     activeQ = false;
-            // }
-            
+
+
+
         }
     }
 
@@ -137,7 +135,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         logOutput("received handshake:" + cID.toString());
         // use the next avail port
         // port tracking
-        TCPReceiveSock newEstSock = mpSock.createEstSocket(cID); 
+        TCPReceiveSock newEstSock = mpSock.createEstSocket(cID);
         if (newEstSock == null) {
             return 0;
         }
@@ -152,23 +150,23 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         ConnID newcID = new ConnID(newEstSock.getAddr(), newEstSock.getPort(), cID.srcAddr, cID.srcPort); // inversion!
         sendSegment(newcID, ackTransport); // here
         logOutput("send handshake Ack: " + synTransport.getSeqNum());
-        newEstSock.setState(State.ESTABLISHED);
+
         return 0;
     }
 
     /* data senders */
-    public int sendWindowUpdateRT(Integer targAck) {
-        if (dataBuffer.getWrite() > targAck) {
+    public int sendWindowUpdateRT(Integer dack) {
+        if (mpSock.receiverBuffer.getWrite() > dack){
             return 0;
         }
         MPTransport updateTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0,
                 dataBuffer.getAvail(),
-                dataBuffer.getWrite(), DSEQ, 0, new byte[0]);
+                dataBuffer.getWrite(), dack, 0, new byte[0]);
         logOutput("window update:rp" + dataBuffer.getRead() + " wp " + dataBuffer.getWrite());
         sendSegment(cID, updateTransport);// here
-        String paramTypes[] = { "java.lang.Integer" };
-        Object params[] = { targAck };
-        addTimer(timeout, "sendWindowUpdateRT", paramTypes, params);
+        String paramTypes[] = {"java.lang.Integer"};
+        Object params[] = {dack};
+        addTimer(3000, "sendWindowUpdateRT", paramTypes, params);
         return -1;
     }
 
@@ -217,8 +215,10 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         printcID(cID);
         socketStatus();
         logOutput("==========================");
-        if (payload.getType() == MPTransport.SYN && payload.getMpType() == MPTransport.MP_CAPABLE && this.role == LISTENER) { 
-            // only for creating a new MPTCP connection, so this is only used by the original listenersocket
+        if (payload.getType() == MPTransport.SYN && payload.getMpType() == MPTransport.MP_CAPABLE
+                && this.role == LISTENER) {
+            // only for creating a new MPTCP connection, so this is only used by the
+            // original listenersocket
             // logOutput("hello!");
             mpSock.handleNewConn(payload);
             receiveHandshakeMPSock(cID, payload);
@@ -235,7 +235,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                         sendAck(false);
                     } else { // receieve a good packet on subflow acks
                         byte[] payloadBuffer = payload.getPayload();
-                        
+
                         int bytesRead = dataBuffer.write(payloadBuffer, 0, payloadBuffer.length);
                         if (bytesRead != payloadBuffer.length) {
                             logError("bytes read: " + bytesRead + "buffer Length " + payloadBuffer.length);
@@ -254,10 +254,11 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
                                 dataBuffer.read(messagePayload, 0, len);
                                 dsnBuffer.read(dumpPayload, 0, len);
                                 // send message to BlockingQ
-                                Message mapping = new Message(messagePayload, dumpPayload[0], len);
-                                // logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len) + ": " + dumpPayload[0]);
-                                if (dataQ.peek() != null){
-                                    logOutput("currnetly in dataQ:"+ dataQ.peek().getDSN());
+                                Message mapping = new Message(messagePayload, dumpPayload[0], len, this.cID);
+                                // logOutput("dsn in tcp:" + Integer.toString(newDSN[bytesRead - 1] - len) + ":
+                                // " + dumpPayload[0]);
+                                if (dataQ.peek() != null) {
+                                    logOutput("currently in dataQ:" + dataQ.peek().getDSN());
                                 }
                                 // logOutput(Boolean.toString(this.dataQ.offer(mapping)));
                                 this.dataQ.offer(mapping);
@@ -270,7 +271,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
                     break;
 
-                case MPTransport.FIN: 
+                case MPTransport.FIN:
 
                     receiveFin(payload);
                     logOutput("FIN CLOSE");
