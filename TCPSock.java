@@ -21,7 +21,7 @@ public abstract class TCPSock {
     int MAX_PAYLOAD_SIZE = MPTransport.MAX_PAYLOAD_SIZE;
     int MSS = 128;
     boolean DELAY = false;
-    public Verbose verboseState = Verbose.FULL;
+    public Verbose verboseState = Verbose.REPORT;
 
     /* services */
     Date timeService = new Date();

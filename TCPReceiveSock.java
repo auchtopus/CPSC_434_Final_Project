@@ -150,7 +150,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         ConnID newcID = new ConnID(newEstSock.getAddr(), newEstSock.getPort(), cID.srcAddr, cID.srcPort); // inversion!
         sendSegment(newcID, ackTransport); // here
         logOutput("send handshake Ack: " + synTransport.getSeqNum());
-        newEstSock.setState(State.ESTABLISHED);
+
         return 0;
     }
 

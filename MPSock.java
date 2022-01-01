@@ -37,6 +37,7 @@ public class MPSock extends TCPSock {
     HashMap<Integer, TCPSock> listenMap = new HashMap<Integer, TCPSock>();
     Queue<TCPSock> backlog = new LinkedList<TCPSock>();
 
+
     public MPSock(InetAddress addr, int port) {
         this.addr = addr; // fishnet version
         this.port = port;
@@ -67,6 +68,7 @@ public class MPSock extends TCPSock {
         // this is the declared "virtual" cID -- the actual send ports on both sides are
         // not this
         ConnID cID = new ConnID(this.addr, this.port, destAddr, destPort);
+
         this.state = State.SYN_SENT;
         sendBuffer = new SenderByteBuffer(BUFFERSIZE);
         // establish a send socket
@@ -109,6 +111,7 @@ public class MPSock extends TCPSock {
     }
 
     int addSubflow(InetAddress destAddr, int destPort) {
+        // connect()
         connect(destAddr, destPort); // initiate subflow connection
         return 0;
     }
@@ -176,7 +179,7 @@ public class MPSock extends TCPSock {
         newSock.setSocketTimeout(5);
         newSock.socketStatus();
         assert (estMap.containsKey(cID));
-
+        newSock.setState(State.ESTABLISHED);
         // run the new sock as a separate thread
         Runnable receiveSockRunnable = (Runnable) newSock;
         Thread receiveSockThread = new Thread(receiveSockRunnable);
