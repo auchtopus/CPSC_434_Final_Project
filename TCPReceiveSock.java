@@ -352,12 +352,13 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
     public void completeTeardownRT() { // complete teardown
         logOutput("teardown?!");
         state = State.CLOSED;
-        if (role == RECEIVER) {
+        if (role == RECEIVER || role == LISTENER) {
             logOutput("teardown receiver");
             mpSock.removeReceiver(cID);
         } else if (role == SENDER) {
             mpSock.removeSender(cID);
-        }
+        } 
+        System.exit(0);
     }
 
     void receiveFin(MPTransport finTransport) {
