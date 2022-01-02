@@ -11,13 +11,12 @@ import java.io.*;
 public class MPSock extends TCPSock {
     final int SENDER = 0;
     final int EVER = 1;
-
+    public boolean isClosed = false;
     int timeout = 1000;
     final int BUFFERSIZE = 1000;
     Date timeService = new Date();
     long timeSent;
     int numMessages = 0;
-
     // MPTCP
     Hashtable<ConnID, BlockingQueue<Message>> dataQMap;
     Hashtable<ConnID, BlockingQueue<Message>> commandQMap;
@@ -243,9 +242,16 @@ public class MPSock extends TCPSock {
         int dataRead = sendBuffer.read(mappingPayload, 0, mappingSize); 
         if (dataRead > 0){
             assert dataRead == mappingSize;
-            Message mapping = new Message(mappingPayload, dsn, mappingSize);
+            Message mapping = new Message(mappingPayload, dsn, mappingSize, false);
+            dataQMap.get(computeFairness()).add(mapping);
+            logOutput("enQ:" + mapping.getDSN() + "|sz:" + mapping.getSize()+ "|buf:" + sendBuffer.toString() );
+
             // logOutput("map:dsn:" + dsn + "|declared size:"  + mappingSize + "|actual size:" + dataRead);
             // assign mapping
+            
+        } else if (this.isClosed == true && sendBuffer.getWrite() == sendBuffer.getSendMax()) { //send DATA FIN
+            logOutput("===========DataFIN written in subflow===========");
+            Message mapping = new Message(mappingPayload, dsn, mappingSize, true);
             dataQMap.get(computeFairness()).add(mapping);
             logOutput("enQ:" + mapping.getDSN() + "|sz:" + mapping.getSize()+ "|buf:" + sendBuffer.toString() );
         }
@@ -255,8 +261,14 @@ public class MPSock extends TCPSock {
 
     /* Connection Closure */
 
-    public void  close() {
-        // close all established TCPSock
+    public void close() {
+        // insert data fin then close all established TCPSock
+        logOutput("Closing");
+        this.isClosed = true; //indicate datafin incoming
+        byte[] dataFIN = "0".getBytes();
+        logOutput("~~isClosed: " + this.isClosed + "|SendMax: " + sendBuffer.getSendMax() + "|wp: " + sendBuffer.getWrite());
+        int bytesWrite = this.write(dataFIN, 0, dataFIN.length);
+        
         for (TCPSock sock : estMap.values()) {
             sock.close();
         }
@@ -343,6 +355,9 @@ public class MPSock extends TCPSock {
         // System.out.println("expdseq:" + expectedDseq);
         ArrayList<ConnID> keyList = new ArrayList<ConnID>(dataQMap.keySet());
         boolean polled = true;
+        if (!receiverBuffer.canWrite()) {
+            logOutput("Receiver buffer CANNOT WRITE");
+        }
         while (polled && receiverBuffer.canWrite()){
             polled = false;
             for (ConnID cID: keyList) {
@@ -357,13 +372,20 @@ public class MPSock extends TCPSock {
                     mappingLen = curMsg.getSize();
                     dataRead = 0;
 
-                    dataRead += receiverBuffer.write(mappingDataBuffer, 0, curMsg.length);
+                    int lenRead = curMsg.length;
+
+                    dataRead += receiverBuffer.write(mappingDataBuffer, 0, lenRead);
                     polled = true;
 
                     if (dataRead == mappingLen){
-                        // resdt!
+                        // reset!
                         dataRead = 0;
                         mappingLen = 0;
+                    } else if (curMsgPeek != null && curMsgPeek.DATAFIN) {
+                        logOutput("MPSock receiver side got Data FIN");
+                        listenMap.remove(this.port);
+                        this.state = State.SHUTDOWN;
+                    
                     } else {
                         break; // theoretically, this should preclude the mappingLen check, but it's doubled up for safety
                     }

@@ -6,6 +6,7 @@ public  class Message {
     Integer dsn;
     byte[] data;
     Integer length;
+    boolean DATAFIN = false;
     enum Command{
         ACCEPT, CLOSE
     }
@@ -15,6 +16,13 @@ public  class Message {
         this.dsn = dsn;
         this.length = length;
 
+    };
+
+    public Message(byte[] data, Integer dsn, Integer length, boolean finish){
+        this.data = data;
+        this.dsn = dsn;
+        this.length = length;
+        this.DATAFIN = finish;
     };
 
     public Message(Integer dack){
@@ -28,6 +36,10 @@ public  class Message {
 
     public int getSize(){
         return length;
+    }
+
+    public boolean getDATAFIN(){
+        return DATAFIN;
     }
 
     public Command getCommand(){
