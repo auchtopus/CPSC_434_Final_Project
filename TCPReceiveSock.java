@@ -156,7 +156,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     /* data senders */
     public int sendWindowUpdateRT(Integer dack) {
-        if (mpSock.receiverBuffer.getWrite() > dack){
+        if (mpSock.receiverBuffer.getWrite() > dack || this.state == State.SHUTDOWN || this.state == State.CLOSED){
             return 0;
         }
         MPTransport updateTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0,

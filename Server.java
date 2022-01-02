@@ -69,12 +69,13 @@ public class Server {
                     }
 
                 }
-                if (numBytes == targBytes) {
+                if (numBytes >= targBytes){ // DO NOT CHANGE!
                     long elapse = System.currentTimeMillis() - startTime;
                     System.out.println("time elapsed:" + elapse + " | "
                             + String.format("%.2f", (double) targBytes / (double) elapse * 1000 ) + " mbps" + " | flows:"
                             + mpSock.getNumConnections());
-                    break;
+                            running = false;
+                            break;
                 }
             } catch (Exception e) {
                 e.printStackTrace();

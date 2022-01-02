@@ -85,7 +85,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
                     sendData();
                 }
 
-                if (this.conn_fin && mappingLen == 0) {
+                if (this.conn_fin && mappingLen == 1) {
                     sendConnFinRT();
                 }                
 

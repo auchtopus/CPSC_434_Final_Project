@@ -73,6 +73,7 @@ public class MPSock extends TCPSock {
     public int connect(InetAddress destAddr, int destPort) {
         // this is the declared "virtual" cID -- the actual send ports on both sides are
         // not this
+        this.role = SENDER;
         ConnID cID = new ConnID(this.addr, this.port, destAddr, destPort);
         this.state = State.SYN_SENT;
         sendBuffer = new SenderByteBuffer(BUFFERSIZE);
@@ -261,7 +262,12 @@ public class MPSock extends TCPSock {
         byte[] mappingPayload = new byte[mappingSize];
         int dsn = sendBuffer.getSendMax();
         int dataRead = sendBuffer.read(mappingPayload, 0, mappingSize);
-        if (mappingSize > 0) {
+        if (this.isClosed == true && sendBuffer.getWrite() == sendBuffer.getSendMax()) { // send DATA FIN
+            logOutput("===========DataFIN written in subflow===========");
+            Message mapping = new Message(mappingPayload, dsn, mappingSize, true);
+            dataQMap.get(computeFairness()).add(mapping);
+            logOutput("enQ:" + mapping.getDSN() + "|sz:" + mapping.getSize() + "|buf:" + sendBuffer.toString());
+        } else if (dataRead > 0) {
             assert dataRead == mappingSize;
             Message mapping = new Message(mappingPayload, dsn, mappingSize, false);
             dataQMap.get(computeFairness()).add(mapping);
@@ -271,11 +277,6 @@ public class MPSock extends TCPSock {
             // size:" + dataRead);
             // assign mapping
 
-        } else if (this.isClosed == true && sendBuffer.getWrite() == sendBuffer.getSendMax()) { // send DATA FIN
-            logOutput("===========DataFIN written in subflow===========");
-            Message mapping = new Message(mappingPayload, dsn, mappingSize, true);
-            dataQMap.get(computeFairness()).add(mapping);
-            logOutput("enQ:" + mapping.getDSN() + "|sz:" + mapping.getSize() + "|buf:" + sendBuffer.toString());
         }
 
         return mappingSize;
@@ -287,16 +288,16 @@ public class MPSock extends TCPSock {
         // insert data fin then close all established TCPSock
         logOutput("Closing");
         this.isClosed = true; // indicate datafin incoming
-        if (this.role == SENDER){
+        if (this.role == SENDER) {
 
             byte[] dataFIN = "0".getBytes();
-            // logOutput("~~isClosed: " + this.isClosed + "|SendMax: " + sendBuffer.getSendMax() + "|wp: "
-            //         + sendBuffer.getWrite());
+            logOutput("~~isClosed: " + this.isClosed + "|SendMax: " + sendBuffer.getSendMax() + "|wp: "
+                    + sendBuffer.getWrite());
             int bytesWrite = this.write(dataFIN, 0, dataFIN.length);
         }
 
         for (TCPSock sock : estMap.values()) {
-            if (sock != null){
+            if (sock != null) {
                 sock.close();
             }
         }
