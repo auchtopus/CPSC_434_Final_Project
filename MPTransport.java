@@ -23,6 +23,7 @@ public class MPTransport {
     public static final int DATA = 3;
     public static final int MP_CAPABLE = 4;
     public static final int MP_JOIN = 5;
+    public static final int DATA_FIN = 6;
 
     private int srcPort;
     private int destPort;

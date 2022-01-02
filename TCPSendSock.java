@@ -19,6 +19,7 @@ public class TCPSendSock extends TCPSock implements Runnable {
     int dataLoaded = 0;
     int mappingLen = 0;
     int mappingDSN = 0;
+    boolean conn_fin = false;
 
     /*
      * For ListenSock only (which has no mQ and is managed entirely by the MPSock)
@@ -49,15 +50,19 @@ public class TCPSendSock extends TCPSock implements Runnable {
         while (true) {
             // handle incoming data
             Message mapping;
+            logOutput("run level state: " + state + "|dataQ.isEmpty(): " + dataQ.isEmpty());
 
             if (!dataQ.isEmpty() && (this.getState() == State.ESTABLISHED || this.getState() == State.SHUTDOWN)) {
-
                 if (mappingLen == 0) {
                     mapping = dataQ.poll();
                     dataLoaded = 0;
                     logOutput("dQ.poll:" + mapping.getSize());
                     mappingLen = mapping.getSize();
                     mappingDSN = mapping.getDSN();
+                    if (mapping.getDATAFIN()) {
+                        logOutput("DATA FIN in Message on sender side|dsnbuf can write: " + dsnBuffer.canWrite() + "|data loaded: " + dataLoaded + "|mappingLen: " + mappingLen);
+                        this.conn_fin = true;
+                    }
 
                     mappingDSNBuffer = new int[mapping.getSize()];
                     for (int i = 0; i < mapping.getSize(); i++) {
@@ -79,6 +84,11 @@ public class TCPSendSock extends TCPSock implements Runnable {
                     dataLoaded += wrote;
                     sendData();
                 }
+
+                if (this.conn_fin && mappingLen == 0) {
+                    sendConnFinRT();
+                }                
+
 
                 // logOutput("dL:" + dataLoaded + "mL:" + mappingLen);
                 if (dataLoaded == mappingLen) {
@@ -209,6 +219,21 @@ public class TCPSendSock extends TCPSock implements Runnable {
         return 0;
     }
 
+    public int sendConnFinRT() {
+        if (state == State.CLOSED) {
+            return 0;
+        }
+
+        MPTransport finTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.FIN, MPTransport.DATA_FIN,
+                dataBuffer.getSendMax(),
+                dataBuffer.getSendMax(), DSEQ, 0, new byte[0]);
+        sendSegment(cID, finTransport);// here
+
+        addTimer(timeout, "sendConnFinRT", null, null);
+        this.state = State.FIN_SENT;
+        return 0;
+    }
+
     /* Transmission */
 
     void sendData() {
@@ -333,9 +358,10 @@ public class TCPSendSock extends TCPSock implements Runnable {
                 initTeardown();
             }
         } else if (getState() == State.FIN_SENT) { // sender only
+            logOutput("got fin ack, type " + payload.getType());
             if (payload.getType() == MPTransport.ACK) {
                 // don't bother checking the ack LOL
-                state = State.CLOSED;
+                this.state = State.CLOSED;
                 completeTeardownRT();
             } else if (payload.getType() == MPTransport.FIN) {
                 sendAck(true);
@@ -384,12 +410,15 @@ public class TCPSendSock extends TCPSock implements Runnable {
     }
 
     public void completeTeardownRT() { // complete teardown
+        logOutput("State: " + state);
         state = State.CLOSED;
+        UDPSock.close();
         if (role == RECEIVER) {
             mpSock.removeReceiver(cID);
         } else if (role == SENDER) {
             mpSock.removeSender(cID);
         }
+        System.exit(0);
     }
 
     void receiveFin(MPTransport finTransport) {

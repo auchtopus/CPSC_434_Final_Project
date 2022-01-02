@@ -172,6 +172,9 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
     public int sendAck(boolean goodAck) { // no timer needed on acks
         // System.out.println("tcp: " + mpSock.receiverBuffer.wp);
+        if (this.state == State.TIME_WAIT) {
+            logOutput("Sending FIN ACK");
+        }
         MPTransport ackTransport = new MPTransport(cID.srcPort, cID.destPort, MPTransport.ACK, 0, dataBuffer.getAvail(),
                 dataBuffer.getWrite(), mpSock.receiverBuffer.getWrite(), 0, new byte[0]);
         logOutput("AVAIL: " + dataBuffer.getAvail());
@@ -273,6 +276,13 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
 
                 case MPTransport.FIN:
 
+                    if (payload.getMpType() == MPTransport.DATA_FIN) {
+                        Message mapping = new Message(new byte[0], payload.getDSeqNum(), 0, true);
+                        this.dataQ.offer(mapping);
+                        assert (dataQ.peek() != null);
+                        logOutput("MPSock getting the datafin");
+                    }
+
                     receiveFin(payload);
                     logOutput("FIN CLOSE");
                     this.close();
@@ -343,6 +353,7 @@ public class TCPReceiveSock extends TCPSock implements Runnable {
         logOutput("teardown?!");
         state = State.CLOSED;
         if (role == RECEIVER) {
+            logOutput("teardown receiver");
             mpSock.removeReceiver(cID);
         } else if (role == SENDER) {
             mpSock.removeSender(cID);

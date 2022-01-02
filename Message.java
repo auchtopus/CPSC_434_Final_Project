@@ -11,6 +11,7 @@ public class Message {
     enum Command {
         ACCEPT, CLOSE, UPDATE_WINDOW
     }
+    boolean DATAFIN = false;
 
     Command command;
 
@@ -21,6 +22,7 @@ public class Message {
 
     };
 
+
     public Message(byte[] data, Integer dsn, Integer length, ConnID cID) {
         this.data = data;
         this.dsn = dsn;
@@ -29,7 +31,14 @@ public class Message {
 
     };
 
-    public Message(Integer dack) {
+    public Message(byte[] data, Integer dsn, Integer length, boolean finish){
+        this.data = data;
+        this.dsn = dsn;
+        this.length = length;
+        this.DATAFIN = finish;
+    };
+
+    public Message(Integer dack){
         this.dack = dack;
     }
 
@@ -46,7 +55,11 @@ public class Message {
         return length;
     }
 
-    public Command getCommand() {
+    public boolean getDATAFIN(){
+        return DATAFIN;
+    }
+
+    public Command getCommand(){
         return command;
     }
 
