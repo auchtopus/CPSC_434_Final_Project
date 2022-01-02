@@ -178,6 +178,10 @@ The state diagram for the TCP operations within each subflow is very similar to 
 
 The state diagram for the MPTCP ends up nesting the TCP state machine inside subflows, implementing logic for communication upstream and downstream from multiplexer to subflow and implementing handshake and teardown for the multiplexers on the sending and receiving sides.
 
+For teardown, the onus is on the Client to initiate MPSock.close(), which signifies the end of transmission for this connection. The MPSock close() will then insert a message in the blocking queue to any of the subflows with a flag set for DATA_FIN (given that all data in the MPSock sending buffer is in flight). That flag will lead to a FIN to be sent with the additional DATA_FIN flag set. As a result, the receiving TCPSock will triage the package as a FIN, detect the DATA_FIN and file a message to the server's MPSock to initiate teardown. The receiving socket sends back an ack in the meantime which completes the teardown for the sending socket, closes the UDP socket and terminates the Client application. The server on the other hand, enters a timed wait to close and in the meantime, performs the cleanup of sockets that upheld the previous connection. 
+
+This architecture respects the requirement that a DATA_FIN can appear on any subflow and that TCP connections can terminate independently of the connection itself. The server keeps running and can welcome any future client if need be.
+
 #### Transmission Logic
 
 Every box is a separate thread. (the MPSock's are run inside the application thread and have no busy-wait)
